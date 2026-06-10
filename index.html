@@ -144,8 +144,24 @@
 
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:99px;font-weight:600;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:99;box-shadow:0 8px 30px rgba(0,0,0,.35)}
   .toast.show{opacity:1}
+  /* change report */
+  .delta{font-weight:800;font-size:12px;white-space:nowrap}
+  .delta.worse{color:var(--sev)}.delta.better{color:var(--low)}.delta.same{color:var(--muted);font-weight:600}
+  .arrowto{font-weight:800;color:var(--muted);padding:0 5px}
+  .card table{box-shadow:none;border:1px solid var(--line);border-radius:10px}
+  .hist{max-height:170px;overflow:auto;border:1px solid var(--line);border-radius:9px;padding:8px 12px;background:#faf8f7}
+  .h-item{font-size:12px;padding:4px 0;border-bottom:1px dashed var(--line)}
+  .h-item:last-child{border-bottom:none}
+  .chg-controls .filters{margin-bottom:6px}
+  .chg-controls label{font-size:12.5px;font-weight:700;color:var(--muted)}
+
   footer{max-width:1500px;margin:0 auto;padding:0 28px 36px;color:var(--muted);font-size:12px}
-  @media print{header .head-controls,nav,.filters,.modal,.overlay{display:none!important}.view{display:block!important}}
+  @media print{
+    header .head-controls,nav,.filters,.no-print,#addBtn,footer,.overlay{display:none!important}
+    .view{display:none!important}.view.active{display:block!important}
+    body{background:#fff}.card,.kpi,table{box-shadow:none;border:1px solid var(--line)}
+    .kpi,.card{break-inside:avoid}
+  }
 </style>
 </head>
 <body>
@@ -196,6 +212,7 @@ window.onerror = function(msg, src, line){
     <button id="tab-dashboard" class="active" onclick="showView('dashboard')">Dashboard</button>
     <button id="tab-register" onclick="showView('register')">Risk register</button>
     <button id="tab-taxonomy" onclick="showView('taxonomy')">Taxonomy &amp; appetite</button>
+    <button id="tab-changes" onclick="showView('changes');renderChanges()">Change report</button>
   </nav>
 </header>
 
@@ -279,6 +296,31 @@ window.onerror = function(msg, src, line){
     <div class="tax-grid" id="taxGrid"></div>
     <p class="floor-note">Whatever the setting, legal and regulatory compliance, safeguarding, and the safety of staff and Fellows are always managed with full risk aversion. Appetite is owned and set by the Board; everything here is a proposal to shape that conversation.</p>
   </section>
+
+  <!-- CHANGE REPORT -->
+  <section id="view-changes" class="view">
+    <div class="card chg-controls">
+      <h3>Change report <span class="hint">what moved between two dates — for Board and ARG papers</span></h3>
+      <div class="filters no-print" style="margin-bottom:6px">
+        <label for="chgFrom">Position as at end of</label>
+        <input type="date" id="chgFrom" onchange="renderChanges()">
+        <label for="chgTo">compared with end of</label>
+        <input type="date" id="chgTo" onchange="renderChanges()">
+        <button class="btn-soft" onclick="window.print()">🖨 Print / save as PDF</button>
+      </div>
+      <div class="count-note" id="chgPeriodNote"></div>
+    </div>
+    <div class="kpis" id="chgKpis"></div>
+    <div class="card">
+      <h3>Risks that changed <span class="hint">click a row for full detail and history</span></h3>
+      <div id="chgChanged"></div>
+    </div>
+    <div class="dash-grid">
+      <div class="card"><h3>New risks added</h3><div class="breach-list" id="chgNew"></div></div>
+      <div class="card"><h3>Risks removed</h3><div class="breach-list" id="chgRemoved"></div></div>
+    </div>
+    <p class="floor-note">Built from the edit history saved with each risk: every save records who changed what, and the register is reconstructed as it stood at each date. History travels with exports, so merged files keep their audit trail.</p>
+  </section>
 </main>
 
 <footer>
@@ -313,6 +355,7 @@ window.onerror = function(msg, src, line){
       <div class="fld"><label>Next review</label><input id="mReview" type="date"></div>
       <div class="fld"><label>Draft placeholder?</label><select id="mDraft"><option value="yes">Yes — draft, for SLT to confirm</option><option value="no">No — confirmed</option></select></div>
       <div class="fld"><label>Last updated</label><input id="mUpdated" type="text" disabled></div>
+      <div class="fld full" id="mHistoryWrap"><label>Change history</label><div id="mHistory" class="hist"></div></div>
     </div>
     <div class="modal-f">
       <div><button class="btn-danger" id="mDelete" onclick="deleteRisk()">Delete risk</button></div>
@@ -431,7 +474,7 @@ const BASELINE_RISKS = [
  {id:"R39", l2:"8.4", l:2, i:4, title:"Business continuity event", desc:"A facilities failure or wider incident interrupts operations and we cannot continue critical activities within tolerable time.", controls:["Business continuity plan","Remote-working capability"], actions:["Refresh BCP for new office and test it"], review:"2026-11-30"},
  {id:"R40", l2:"8.5", l:2, i:3, title:"Critical supplier failure", desc:"A critical supplier or third party fails, under-performs or creates a security/compliance exposure.", controls:["Contracts with SLAs for key suppliers","Supplier due diligence at onboarding"], actions:["Map critical suppliers and exit/contingency options"], review:"2026-12-31"},
  {id:"R41", l2:"1.3", l:1, i:3, title:"Gift Aid and tax compliance error", desc:"Errors in Gift Aid claims or other tax compliance lead to repayment, penalties and HMRC scrutiny.", controls:["Gift Aid procedures and audit trail","External audit review"], actions:["Spot-check Gift Aid declarations annually"], review:"2026-12-31"}
-].map(r => ({...r, status:"Open", draft:true, updated:BASE}));
+].map(r => ({...r, status:"Open", draft:true, updated:BASE, created:BASE, history:[{at:BASE, by:"baseline", created:true}]}));
 
 /* ============ STATE ============ */
 const LS_KEY = "tcf-risk-register-v1";
@@ -442,7 +485,9 @@ const store = {
   get(k){ try{ return window.localStorage.getItem(k); }catch(e){ return null; } },
   set(k,v){ try{ window.localStorage.setItem(k,v); }catch(e){} }
 };
-let risks = loadRisks();
+const loaded = loadState();
+let risks = loaded.risks;
+let deletedRisks = loaded.deleted;
 let role = store.get(LS_KEY+"-role") || "viewer";
 let sortKey = "score", sortDir = -1;
 let editingId = null, pickL = 3, pickI = 3;
@@ -450,14 +495,25 @@ let editingId = null, pickL = 3, pickI = 3;
 const AREA_MAP = {};
 TAXONOMY.forEach(cat => cat.areas.forEach(a => AREA_MAP[a.ref] = {...a, cat}));
 
-function loadRisks(){
+function migrate(list){
+  (list||[]).forEach(r=>{
+    if(!r.created) r.created = r.updated || BASE;
+    if(!Array.isArray(r.history) || !r.history.length) r.history = [{at:r.created, by:"baseline", created:true}];
+  });
+  return list||[];
+}
+function loadState(){
   try{
     const raw = store.get(LS_KEY);
-    if(raw){ const d = JSON.parse(raw); if(Array.isArray(d) && d.length) return d; }
+    if(raw){
+      const d = JSON.parse(raw);
+      if(Array.isArray(d) && d.length) return {risks:migrate(d), deleted:[]};            // pre-change-control format
+      if(d && Array.isArray(d.risks) && d.risks.length) return {risks:migrate(d.risks), deleted:migrate(d.deleted)};
+    }
   }catch(e){}
-  return JSON.parse(JSON.stringify(BASELINE_RISKS));
+  return {risks: JSON.parse(JSON.stringify(BASELINE_RISKS)), deleted: []};
 }
-function persist(){ store.set(LS_KEY, JSON.stringify(risks)); }
+function persist(){ store.set(LS_KEY, JSON.stringify({risks, deleted: deletedRisks})); }
 
 /* ============ HELPERS ============ */
 function score(r){ return r.l * r.i; }
@@ -480,6 +536,44 @@ function canEditArea(l2ref){
   return ownerFirst(AREA_MAP[l2ref].cat.owner) === role;
 }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ============ CHANGE CONTROL ============ */
+const FIELDS = {title:"Title", desc:"Description", l2:"Taxonomy area", l:"Likelihood", i:"Impact",
+                controls:"Controls", actions:"Actions", status:"Status", review:"Next review", draft:"Draft flag"};
+function sameVal(a,b){ return JSON.stringify(a===undefined?null:a) === JSON.stringify(b===undefined?null:b); }
+function diffRisk(prev, next){
+  const changes = [];
+  Object.keys(FIELDS).forEach(f=>{ if(!sameVal(prev[f], next[f])) changes.push({f, from:prev[f], to:next[f]}); });
+  return changes;
+}
+/* Rebuild a risk as it stood at the cutoff by undoing history entries newer than it. */
+function rewind(r, cutoff){
+  if((r.created||BASE) > cutoff) return null;
+  const c = JSON.parse(JSON.stringify(r));
+  (c.history||[]).filter(h=>h.at>cutoff && h.changes)
+    .sort((a,b)=> a.at<b.at ? 1 : -1)
+    .forEach(h=> h.changes.forEach(ch=>{ c[ch.f] = ch.from; }));
+  return c;
+}
+/* Register state (incl. since-deleted risks) as at end of the given day. Returns map id->risk. */
+function stateAt(dateStr){
+  const cutoff = dateStr + "T23:59:59.999Z";
+  const out = {};
+  risks.forEach(r=>{ const s = rewind(r, cutoff); if(s) out[s.id] = s; });
+  deletedRisks.forEach(d=>{ if((d.deletedAt||"") > cutoff){ const s = rewind(d, cutoff); if(s) out[s.id] = s; } });
+  return out;
+}
+function entriesBetween(r, a, b){
+  const ca = a + "T23:59:59.999Z", cb = b + "T23:59:59.999Z";
+  return (r.history||[]).filter(h=> h.at > ca && h.at <= cb);
+}
+function describeChange(ch){
+  const f = FIELDS[ch.f] || ch.f;
+  if(ch.f==="controls" || ch.f==="actions" || ch.f==="desc" || ch.f==="title") return f + " updated";
+  if(ch.f==="l2") return "Moved " + esc(ch.from) + " → " + esc(ch.to);
+  if(ch.f==="draft") return ch.to ? "Marked as draft" : "Confirmed (draft flag removed)";
+  return f + " " + esc(String(ch.from)) + " → " + esc(String(ch.to));
+}
 function toast(msg){
   const t = document.getElementById("toast");
   t.textContent = msg; t.classList.add("show");
@@ -661,6 +755,95 @@ function goRegisterArea(l2){
   showView("register"); renderRegister();
 }
 
+/* ---- change report ---- */
+function profileOf(state){
+  const arr = Object.values(state).filter(r=>r.status!=="Closed");
+  const n = arr.length;
+  return {
+    n,
+    breach: arr.filter(outsideAppetite).length,
+    severe: arr.filter(r=>score(r)>=16).length,
+    high: arr.filter(r=>{const s=score(r); return s>=10 && s<16;}).length,
+    avg: n ? Math.round(arr.reduce((t,r)=>t+score(r),0)/n*10)/10 : 0
+  };
+}
+function kpiDelta(a, b, neutral){
+  const d = Math.round((b-a)*10)/10;
+  if(!d) return '<span class="delta same">no change</span>';
+  const up = d>0;
+  return `<span class="delta ${neutral?"same":(up?"worse":"better")}">${up?"▲":"▼"} ${up?"+":""}${d}</span>`;
+}
+function chgScoreCell(sa, sb){
+  return `<span class="pill" style="background:${bandHex(sa)}">${sa}</span><span class="arrowto">→</span>`+
+         `<span class="pill" style="background:${bandHex(sb)}">${sb}</span> ${kpiDelta(sa, sb)}`;
+}
+function renderChanges(){
+  const fromEl = document.getElementById("chgFrom"), toEl = document.getElementById("chgTo");
+  if(!fromEl.value) fromEl.value = BASE.slice(0,10);
+  if(!toEl.value) toEl.value = TODAY;
+  let A = fromEl.value, B = toEl.value;
+  if(A > B){ const t = A; A = B; B = t; }
+  const sa = stateAt(A), sb = stateAt(B);
+  document.getElementById("chgPeriodNote").textContent =
+    `Comparing the register as it stood at end of ${A} with end of ${B}. Risks edited in between are listed with what changed and by whom.`;
+
+  const pa = profileOf(sa), pb = profileOf(sb);
+  document.getElementById("chgKpis").innerHTML = `
+    <div class="kpi neutral"><div class="n">${pa.n} <span class="arrowto">→</span> ${pb.n}</div><div class="t">Risks on register</div><div class="d">${kpiDelta(pa.n, pb.n, true)}</div></div>
+    <div class="kpi alert"><div class="n">${pa.breach} <span class="arrowto">→</span> ${pb.breach}</div><div class="t">Outside draft appetite</div><div class="d">${kpiDelta(pa.breach, pb.breach)}</div></div>
+    <div class="kpi warn"><div class="n">${pa.severe} <span class="arrowto">→</span> ${pb.severe}</div><div class="t">Severe (16–25)</div><div class="d">${kpiDelta(pa.severe, pb.severe)}</div></div>
+    <div class="kpi warn"><div class="n">${pa.high} <span class="arrowto">→</span> ${pb.high}</div><div class="t">High (10–15)</div><div class="d">${kpiDelta(pa.high, pb.high)}</div></div>
+    <div class="kpi ok"><div class="n">${pa.avg} <span class="arrowto">→</span> ${pb.avg}</div><div class="t">Average residual score</div><div class="d">${kpiDelta(pa.avg, pb.avg)}</div></div>`;
+
+  // changed: present at both dates with different tracked fields
+  const changed = [];
+  Object.keys(sb).forEach(id=>{
+    if(!sa[id]) return;
+    const live = risks.find(r=>r.id===id) || deletedRisks.find(d=>d.id===id);
+    if(!live) return;
+    const entries = entriesBetween(live, A, B).filter(h=>h.changes);
+    if(!entries.length) return;
+    changed.push({a:sa[id], b:sb[id], entries});
+  });
+  changed.sort((x,y)=> Math.abs(score(y.b)-score(y.a)) - Math.abs(score(x.b)-score(x.a)));
+  document.getElementById("chgChanged").innerHTML = changed.length ? `
+    <table><thead><tr><th>Ref</th><th>Risk</th><th>Residual score</th><th>Appetite check</th><th>What changed</th><th>By</th></tr></thead><tbody>` +
+    changed.map(c=>{
+      const inRegister = risks.some(r=>r.id===c.b.id);
+      const oA = outsideAppetite(c.a), oB = outsideAppetite(c.b);
+      const appCell = oA===oB ? (oB?'<span class="breach-flag">▲ outside (still)</span>':'<span class="ok-flag">✓ within (still)</span>')
+        : (oB?'<span class="breach-flag">moved OUTSIDE appetite</span>':'<span class="ok-flag">moved back within appetite</span>');
+      const what = [...new Set(c.entries.flatMap(h=>h.changes.map(describeChange)))].join("; ");
+      const who = [...new Set(c.entries.map(h=>h.by||"?"))].join(", ");
+      return `<tr ${inRegister?`onclick="openModal('${c.b.id}')"`:'style="cursor:default"'}>
+        <td style="font-weight:700;color:var(--muted)">${c.b.id}</td>
+        <td><div class="risk-title">${esc(c.b.title)}</div><div class="risk-sub">${esc(area(c.b).cat.name)} · ${esc(area(c.b).name)}</div></td>
+        <td style="white-space:nowrap">${chgScoreCell(score(c.a), score(c.b))}</td>
+        <td>${appCell}</td>
+        <td style="font-size:12px">${what}</td>
+        <td style="white-space:nowrap;font-size:12px">${esc(who)}</td></tr>`;
+    }).join("") + `</tbody></table>`
+    : '<div class="none-msg">No risks were edited between these dates.</div>';
+
+  // new and removed
+  const news = Object.values(sb).filter(r=>!sa[r.id]);
+  const removed = Object.values(sa).filter(r=>!sb[r.id]);
+  document.getElementById("chgNew").innerHTML = news.length ? news.sort((a,b)=>score(b)-score(a)).map(r=>{
+    const inRegister = risks.some(x=>x.id===r.id);
+    return `<div class="item" ${inRegister?`onclick="openModal('${r.id}')"`:'style="cursor:default"'}>
+      <div class="score" style="background:${bandHex(score(r))}">${score(r)}</div>
+      <div><div class="ti">${r.id} — ${esc(r.title)}</div>
+      <div class="meta">${esc(area(r).cat.name)} · added ${(r.created||"").slice(0,10)}</div></div></div>`;
+  }).join("") : '<div class="none-msg">None.</div>';
+  document.getElementById("chgRemoved").innerHTML = removed.length ? removed.map(r=>{
+    const t = deletedRisks.find(d=>d.id===r.id);
+    return `<div class="item" style="cursor:default">
+      <div class="score" style="background:${bandHex(score(r))}">${score(r)}</div>
+      <div><div class="ti">${r.id} — ${esc(r.title)}</div>
+      <div class="meta">${esc(area(r).cat.name)} · removed ${t?(t.deletedAt||"").slice(0,10):"?"}${t&&t.deletedBy?" by "+esc(t.deletedBy):""}</div></div></div>`;
+  }).join("") : '<div class="none-msg">None.</div>';
+}
+
 /* ============ MODAL ============ */
 function buildAreaOptions(sel, current){
   sel.innerHTML = TAXONOMY.map(c=>`<optgroup label="${c.ref}. ${esc(c.name)} — ${esc(c.owner)}">`+
@@ -695,6 +878,15 @@ function openModal(id){
   ro.style.display = editable? "none" : "";
   ro.textContent = role==="viewer" ? "Read-only — choose your name under “I am” to edit your areas."
     : `Read-only — this area is owned by ${r? area(r).cat.owner : ""}.`;
+  document.getElementById("mHistoryWrap").style.display = r ? "" : "none";
+  if(r){
+    const hist = [...(r.history||[])].sort((a,b)=> a.at<b.at ? 1 : -1);
+    document.getElementById("mHistory").innerHTML = hist.map(h=>{
+      const when = (h.at||"").slice(0,10);
+      if(h.created) return `<div class="h-item"><b>${when}</b> — created${h.by && h.by!=="baseline" ? " by "+esc(h.by) : " (baseline draft)"}</div>`;
+      return `<div class="h-item"><b>${when}</b> — ${esc(h.by||"?")}: ${(h.changes||[]).map(describeChange).join("; ")}</div>`;
+    }).join("") || '<div class="h-item">No changes recorded.</div>';
+  }
   buildPickers(editable);
   refreshScoreUI();
   document.getElementById("overlay").classList.add("open");
@@ -722,7 +914,7 @@ function refreshScoreUI(){
 function closeModal(){ document.getElementById("overlay").classList.remove("open"); }
 function nextId(){
   let n = 0;
-  risks.forEach(r=>{ const m = /^R(\d+)$/.exec(r.id); if(m) n = Math.max(n, +m[1]); });
+  risks.concat(deletedRisks).forEach(r=>{ const m = /^R(\d+)$/.exec(r.id); if(m) n = Math.max(n, +m[1]); });
   return "R" + String(n+1).padStart(2,"0");
 }
 function saveRisk(){
@@ -743,13 +935,26 @@ function saveRisk(){
   };
   if(!canEditArea(obj.l2)){ toast("You can only save risks in your own areas."); return; }
   const idx = risks.findIndex(r=>r.id===obj.id);
-  if(idx>=0) risks[idx]=obj; else risks.push(obj);
+  if(idx>=0){
+    const prev = risks[idx];
+    const changes = diffRisk(prev, obj);
+    if(!changes.length){ closeModal(); toast("No changes to save."); return; }
+    obj.created = prev.created || prev.updated || BASE;
+    obj.history = (prev.history||[]).concat([{at:obj.updated, by:role, changes}]);
+    risks[idx] = obj;
+  }else{
+    obj.created = obj.updated;
+    obj.history = [{at:obj.updated, by:role, created:true}];
+    risks.push(obj);
+  }
   persist(); closeModal(); renderAll(); toast(`${obj.id} saved.`);
 }
 function deleteRisk(){
   const r = risks.find(x=>x.id===editingId);
   if(!r) return;
   if(!confirm(`Delete ${r.id} — “${r.title}”? This only affects your local copy until you export/share.`)) return;
+  deletedRisks = deletedRisks.filter(d=>d.id!==r.id);
+  deletedRisks.push({...r, deletedAt:new Date().toISOString(), deletedBy:role});
   risks = risks.filter(x=>x.id!==editingId);
   persist(); closeModal(); renderAll(); toast("Risk deleted.");
 }
@@ -762,14 +967,21 @@ function download(name, text, type){
   setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
 }
 function exportJSON(mineOnly){
-  let data = risks;
+  let data = risks, del = deletedRisks;
   if(mineOnly){
     data = risks.filter(r=>ownerFirst(area(r).cat.owner)===role);
-    if(!data.length){ toast("No risks in your areas yet."); return; }
+    del = deletedRisks.filter(r=>AREA_MAP[r.l2] && ownerFirst(area(r).cat.owner)===role);
+    if(!data.length && !del.length){ toast("No risks in your areas yet."); return; }
   }
-  const payload = { format:"tcf-risk-register", version:1, exported:new Date().toISOString(), exportedBy: role, risks:data };
+  const payload = { format:"tcf-risk-register", version:2, exported:new Date().toISOString(), exportedBy: role, risks:data, deleted:del };
   download(`tcf-risk-register${mineOnly?"-"+role.toLowerCase():""}-${TODAY}.json`, JSON.stringify(payload,null,2), "application/json");
   toast(`Exported ${data.length} risk${data.length===1?"":"s"}.`);
+}
+/* Union of two histories, deduped by timestamp+author, oldest first. */
+function unionHistory(a, b){
+  const m = {};
+  (a||[]).concat(b||[]).forEach(h=>{ m[(h.at||"")+"|"+(h.by||"")] = h; });
+  return Object.values(m).sort((x,y)=> (x.at||"") < (y.at||"") ? -1 : 1);
 }
 function importJSON(input){
   const f = input.files[0]; if(!f) return;
@@ -777,18 +989,49 @@ function importJSON(input){
   rd.onload = () => {
     try{
       const payload = JSON.parse(rd.result);
-      const incoming = Array.isArray(payload) ? payload : payload.risks;
-      if(!Array.isArray(incoming)) throw new Error("no risks array");
+      const incoming = migrate((Array.isArray(payload) ? payload : payload.risks) || []);
+      const incomingDel = migrate((payload && payload.deleted) || []);
+      if(!incoming.length && !incomingDel.length) throw new Error("no risks");
       let added=0, updated=0, skipped=0;
       incoming.forEach(inR=>{
         if(!inR.id || !AREA_MAP[inR.l2]){ skipped++; return; }
         const idx = risks.findIndex(r=>r.id===inR.id);
-        if(idx<0){ risks.push(inR); added++; }
-        else if((inR.updated||"") > (risks[idx].updated||"")){ risks[idx]=inR; updated++; }
-        else skipped++;
+        if(idx>=0){
+          const ours = risks[idx];
+          const hist = unionHistory(ours.history, inR.history);
+          const created = (ours.created||BASE) < (inR.created||BASE) ? ours.created : inR.created;
+          if((inR.updated||"") > (ours.updated||"")){ risks[idx] = {...inR, history:hist, created}; updated++; }
+          else { risks[idx] = {...ours, history:hist, created}; skipped++; }
+        }else{
+          const tomb = deletedRisks.find(d=>d.id===inR.id);
+          if(tomb && (tomb.deletedAt||"") > (inR.updated||"")){ skipped++; return; } // our deletion is newer
+          if(tomb) deletedRisks = deletedRisks.filter(d=>d.id!==inR.id);             // their edit resurrects it
+          risks.push(inR); added++;
+        }
+      });
+      let removed=0;
+      incomingDel.forEach(dt=>{
+        if(!dt.id) return;
+        const idx = risks.findIndex(r=>r.id===dt.id);
+        if(idx>=0){
+          if((dt.deletedAt||"") > (risks[idx].updated||"")){           // their deletion is newer than our edit
+            dt.history = unionHistory(risks[idx].history, dt.history);
+            risks.splice(idx,1);
+            deletedRisks = deletedRisks.filter(d=>d.id!==dt.id);
+            deletedRisks.push(dt); removed++;
+          }
+          return;
+        }
+        const ours = deletedRisks.find(d=>d.id===dt.id);
+        if(!ours) deletedRisks.push(dt);
+        else if((dt.deletedAt||"") > (ours.deletedAt||"")){
+          dt.history = unionHistory(ours.history, dt.history);
+          deletedRisks = deletedRisks.filter(d=>d.id!==dt.id);
+          deletedRisks.push(dt);
+        }
       });
       persist(); renderAll();
-      toast(`Merged: ${added} added, ${updated} updated, ${skipped} unchanged/skipped.`);
+      toast(`Merged: ${added} added, ${updated} updated, ${removed} removed, ${skipped} unchanged.`);
     }catch(e){ toast("Could not read that file — expected a register JSON export."); }
     input.value = "";
   };
@@ -805,8 +1048,9 @@ function exportCSV(){
   toast("CSV exported.");
 }
 function resetBaseline(){
-  if(!confirm("Replace all local data with the original baseline draft risks? Export first if you have edits to keep.")) return;
+  if(!confirm("Replace all local data with the original baseline draft risks? This also clears all change history. Export first if you have edits to keep.")) return;
   risks = JSON.parse(JSON.stringify(BASELINE_RISKS));
+  deletedRisks = [];
   persist(); renderAll(); toast("Reset to baseline.");
 }
 
@@ -817,7 +1061,7 @@ function populateFilters(){
   const owners = [...new Set(TAXONOMY.map(c=>c.owner))];
   document.getElementById("fOwner").innerHTML = '<option value="">All owners</option>' + owners.map(o=>`<option>${esc(o)}</option>`).join("");
 }
-function renderAll(){ renderDashboard(); renderRegister(); renderTaxonomy(); }
+function renderAll(){ renderDashboard(); renderRegister(); renderTaxonomy(); renderChanges(); }
 populateFilters();
 document.getElementById("role").value = role;
 setRole(role);

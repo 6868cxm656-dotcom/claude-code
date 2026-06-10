@@ -150,6 +150,24 @@
 </head>
 <body>
 
+<noscript>
+  <div style="background:#fdecea;color:#A81B12;padding:14px 28px;font-weight:600">
+    This register needs JavaScript, which is switched off or blocked here. If you are seeing this inside an email,
+    Teams or chat preview window, download the file and open it directly in Chrome, Edge, Safari or Firefox.
+  </div>
+</noscript>
+<div id="jsError" style="display:none;background:#fdecea;color:#A81B12;padding:14px 28px;font-weight:600"></div>
+<script>
+window.onerror = function(msg, src, line){
+  var d = document.getElementById("jsError");
+  if(d){
+    d.style.display = "block";
+    d.textContent = "The register could not load: " + msg + (line ? " (line " + line + ")" : "") +
+      ". Try opening this file directly in an up-to-date browser (Chrome, Edge, Safari or Firefox) rather than a preview window.";
+  }
+};
+</script>
+
 <header>
   <div class="head-top">
     <div class="brand">
@@ -418,8 +436,14 @@ const BASELINE_RISKS = [
 /* ============ STATE ============ */
 const LS_KEY = "tcf-risk-register-v1";
 const TODAY = new Date().toISOString().slice(0,10);
+/* Some browsers/contexts (strict privacy modes, sandboxed viewers) throw on any
+   localStorage access — the app must still work without persistence. */
+const store = {
+  get(k){ try{ return window.localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ window.localStorage.setItem(k,v); }catch(e){} }
+};
 let risks = loadRisks();
-let role = localStorage.getItem(LS_KEY+"-role") || "viewer";
+let role = store.get(LS_KEY+"-role") || "viewer";
 let sortKey = "score", sortDir = -1;
 let editingId = null, pickL = 3, pickI = 3;
 
@@ -428,12 +452,12 @@ TAXONOMY.forEach(cat => cat.areas.forEach(a => AREA_MAP[a.ref] = {...a, cat}));
 
 function loadRisks(){
   try{
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = store.get(LS_KEY);
     if(raw){ const d = JSON.parse(raw); if(Array.isArray(d) && d.length) return d; }
   }catch(e){}
   return JSON.parse(JSON.stringify(BASELINE_RISKS));
 }
-function persist(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(risks)); }catch(e){} }
+function persist(){ store.set(LS_KEY, JSON.stringify(risks)); }
 
 /* ============ HELPERS ============ */
 function score(r){ return r.l * r.i; }
@@ -455,7 +479,7 @@ function canEditArea(l2ref){
   if(role==="viewer") return false;
   return ownerFirst(AREA_MAP[l2ref].cat.owner) === role;
 }
-function esc(s){ return String(s??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 function toast(msg){
   const t = document.getElementById("toast");
   t.textContent = msg; t.classList.add("show");
@@ -465,7 +489,7 @@ function toast(msg){
 /* ============ ROLE ============ */
 function setRole(v){
   role = v;
-  localStorage.setItem(LS_KEY+"-role", v);
+  store.set(LS_KEY+"-role", v);
   document.getElementById("exportMineBtn").style.display = (v!=="viewer" && v!=="lead") ? "" : "none";
   document.getElementById("addBtn").style.display = (v==="viewer") ? "none" : "";
   renderAll();
@@ -772,7 +796,7 @@ function importJSON(input){
 }
 function exportCSV(){
   const head = ["Ref","Title","Description","L1 category","L2 area","Owner","Likelihood","Impact","Score","Band","Appetite","Within appetite","Status","Next review","Controls","Actions","Draft","Updated"];
-  const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
+  const q = v => `"${String(v==null?"":v).replace(/"/g,'""')}"`;
   const rows = risks.map(r=>{
     const a = area(r);
     return [r.id,r.title,r.desc,a.cat.name,`${a.ref} ${a.name}`,a.cat.owner,r.l,r.i,score(r),band(score(r)),appetite(r).label,outsideAppetite(r)?"NO — outside":"Yes",r.status,r.review,(r.controls||[]).join("; "),(r.actions||[]).join("; "),r.draft?"Draft":"Confirmed",(r.updated||"").slice(0,10)].map(q).join(",");

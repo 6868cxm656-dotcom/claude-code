@@ -114,8 +114,8 @@ One shared map of TCF's risks, with a named SLT owner for every area, so we mana
 
 | Appetite | Count |
 |---|---|
-| Averse | 12 |
+| Averse | 11 |
 | Balanced: averse | 18 |
 | Balanced: seeking | 10 |
 | Seeking | 1 |
-| **Total Level 2 areas** | **41** |
+| **Total Level 2 areas** | **40** |

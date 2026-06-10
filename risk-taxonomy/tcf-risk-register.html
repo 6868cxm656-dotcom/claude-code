@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCF Risk Register — DRAFT</title>
+<style>
+  :root{
+    --red:#DA291C; --red-dark:#A81B12; --red-mid:#E0837B; --red-pale:#F5C2BC;
+    --ink:#1d1d1f; --muted:#6b6b70; --line:#e6e2e0; --bg:#faf8f7; --card:#ffffff;
+    --low:#2E7D32; --mod:#F2B705; --high:#EF6C00; --sev:#C62828;
+    --radius:14px; --shadow:0 1px 3px rgba(29,29,31,.08),0 8px 24px rgba(29,29,31,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  header{background:linear-gradient(120deg,var(--red-dark),var(--red) 55%,#ef4b3a);color:#fff;padding:20px 28px 0}
+  .head-top{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;padding-bottom:16px}
+  .brand h1{font-size:21px;font-weight:800;letter-spacing:-.02em}
+  .brand .sub{font-size:12.5px;opacity:.85;margin-top:2px}
+  .chip{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:.06em;vertical-align:2px;margin-left:8px}
+  .head-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .head-controls label{font-size:12px;font-weight:600;opacity:.9}
+  select,input[type=text],input[type=date],input[type=month]{font:inherit;padding:7px 10px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+  .head-controls select{border:none}
+  button{font:inherit;font-weight:600;border:none;border-radius:9px;padding:7px 13px;cursor:pointer;transition:filter .15s}
+  button:hover{filter:brightness(.94)}
+  .btn-ghost{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.45)}
+  .btn-primary{background:var(--red);color:#fff}
+  .btn-soft{background:#f1edec;color:var(--ink)}
+  .btn-danger{background:#fff;color:var(--sev);border:1px solid var(--sev)}
+  nav{display:flex;gap:4px}
+  nav button{background:transparent;color:rgba(255,255,255,.78);border-radius:10px 10px 0 0;padding:10px 18px;font-size:14px}
+  nav button.active{background:var(--bg);color:var(--ink)}
+  main{padding:22px 28px 60px;max-width:1500px;margin:0 auto}
+  .view{display:none}.view.active{display:block}
+
+  /* dashboard */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
+  .kpi{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;cursor:pointer;border-top:4px solid transparent}
+  .kpi .n{font-size:30px;font-weight:800;letter-spacing:-.03em}
+  .kpi .t{font-size:12px;color:var(--muted);font-weight:600;margin-top:2px}
+  .kpi.alert{border-top-color:var(--sev)}
+  .kpi.warn{border-top-color:var(--high)}
+  .kpi.ok{border-top-color:var(--low)}
+  .kpi.neutral{border-top-color:var(--red)}
+  .dash-grid{display:grid;grid-template-columns:minmax(380px,460px) 1fr;gap:14px;align-items:start}
+  @media(max-width:980px){.dash-grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;margin-bottom:14px}
+  .card h3{font-size:14.5px;font-weight:800;margin-bottom:12px;letter-spacing:-.01em}
+  .card h3 .hint{font-weight:500;color:var(--muted);font-size:12px;margin-left:6px}
+
+  .heatwrap{display:grid;grid-template-columns:18px 1fr;gap:6px}
+  .axis-y{writing-mode:vertical-rl;transform:rotate(180deg);text-align:center;font-size:11px;font-weight:700;color:var(--muted)}
+  .heat{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
+  .heat .cell{aspect-ratio:1.55;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:#fff;position:relative;transition:transform .12s}
+  .heat .cell:hover{transform:scale(1.06)}
+  .heat .cell .c{font-size:17px;font-weight:800}
+  .heat .cell .s{font-size:9px;opacity:.85}
+  .heat .cell.empty{opacity:.32;cursor:default}
+  .heat .cell.empty:hover{transform:none}
+  .axis-x{grid-column:2;display:grid;grid-template-columns:repeat(5,1fr);gap:5px;font-size:10.5px;color:var(--muted);text-align:center;font-weight:600}
+  .axis-x-label{grid-column:2;text-align:center;font-size:11px;font-weight:700;color:var(--muted);margin-top:2px}
+
+  .bars .row{display:grid;grid-template-columns:170px 1fr 28px;gap:10px;align-items:center;margin-bottom:7px;cursor:pointer}
+  .bars .row:hover .lbl{color:var(--red)}
+  .bars .lbl{font-size:12px;font-weight:600;text-align:right;color:var(--ink)}
+  .bars .track{height:18px;border-radius:6px;background:#f1edec;overflow:hidden;display:flex}
+  .bars .seg{height:100%}
+  .bars .tot{font-size:12px;font-weight:700;color:var(--muted)}
+
+  .breach-list .item{display:flex;gap:10px;align-items:center;padding:9px 10px;border-radius:10px;cursor:pointer;border:1px solid transparent}
+  .breach-list .item:hover{background:#fdf3f2;border-color:var(--red-pale)}
+  .breach-list .score{min-width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px}
+  .breach-list .ti{font-weight:700;font-size:13px}
+  .breach-list .meta{font-size:11.5px;color:var(--muted)}
+  .none-msg{color:var(--muted);font-size:13px;padding:8px 2px}
+
+  /* register */
+  .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+  .filters input[type=text]{min-width:220px;flex:1;max-width:340px}
+  .toggle{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--muted);background:#fff;border:1px solid var(--line);padding:7px 11px;border-radius:9px;cursor:pointer;user-select:none}
+  .toggle.on{background:#fdf3f2;border-color:var(--red);color:var(--red-dark)}
+  table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  thead th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);text-align:left;padding:11px 12px;background:#f6f2f1;cursor:pointer;user-select:none;white-space:nowrap}
+  thead th .arr{font-size:9px}
+  tbody td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:middle}
+  tbody tr{cursor:pointer}
+  tbody tr:hover td{background:#fdf6f5}
+  .pill{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:3px 8px;border-radius:99px;color:#fff;font-weight:800;font-size:12.5px}
+  .pill-outline{background:transparent;border:1.5px solid currentColor;font-weight:700}
+  .tag{display:inline-block;font-size:11px;font-weight:700;border-radius:6px;padding:2px 7px}
+  .tag-draft{background:#fff3cd;color:#7a5d00}
+  .tag-app{border:1px solid var(--line)}
+  .breach-flag{color:var(--sev);font-weight:800;font-size:11.5px;white-space:nowrap}
+  .ok-flag{color:var(--low);font-weight:700;font-size:11.5px;white-space:nowrap}
+  .risk-title{font-weight:700;font-size:13.5px}
+  .risk-sub{font-size:11.5px;color:var(--muted);margin-top:1px}
+  .lockicon{opacity:.45;font-size:11px}
+  .reg-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+  .count-note{font-size:12.5px;color:var(--muted)}
+
+  /* taxonomy view */
+  .tax-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+  .tax-cat{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  .tax-cat .cat-h{background:var(--red);color:#fff;padding:12px 14px}
+  .tax-cat .cat-h .nm{font-weight:800;font-size:14px}
+  .tax-cat .cat-h .ow{font-size:11.5px;opacity:.9;margin-top:1px}
+  .tax-area{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:9px 14px;border-top:1px solid var(--line);cursor:pointer;font-size:12.5px}
+  .tax-area:hover{background:#fdf6f5}
+  .tax-area .dot{width:12px;height:12px;border-radius:4px;flex:none;border:1px solid rgba(0,0,0,.15)}
+  .tax-area .anm{flex:1;font-weight:600}
+  .tax-area .cnt{font-size:11px;color:var(--muted);font-weight:700}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:4px 0 16px}
+  .legend .li{display:flex;gap:7px;align-items:center;font-size:12px;font-weight:600;color:var(--muted)}
+  .legend .sw{width:14px;height:14px;border-radius:4px;border:1px solid rgba(0,0,0,.15)}
+  .floor-note{font-size:12px;color:var(--muted);font-style:italic;margin-top:14px}
+
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(20,12,11,.45);display:none;align-items:flex-start;justify-content:center;padding:4vh 16px;z-index:50;overflow:auto}
+  .overlay.open{display:flex}
+  .modal{background:#fff;border-radius:18px;max-width:760px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,.3);overflow:hidden}
+  .modal-h{padding:18px 22px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .modal-h h2{font-size:17px;letter-spacing:-.01em}
+  .modal-b{padding:18px 22px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .modal-b .full{grid-column:1/-1}
+  .fld label{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:5px}
+  .fld input,.fld select,.fld textarea{width:100%;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff}
+  .fld textarea{min-height:64px;resize:vertical}
+  .fld input:disabled,.fld select:disabled,.fld textarea:disabled{background:#f7f4f3;color:#555}
+  .scorebox{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .picker .nums{display:flex;gap:5px;margin-top:3px}
+  .picker .nums button{width:34px;height:34px;border-radius:8px;background:#f1edec;color:var(--ink);font-weight:800}
+  .picker .nums button.sel{background:var(--red);color:#fff}
+  .picker .nums button:disabled{cursor:default;opacity:.55}
+  .score-big{min-width:64px;height:64px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff}
+  .score-big .v{font-size:24px;font-weight:800;line-height:1}
+  .score-big .b{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-top:2px}
+  .appetite-cmp{font-size:12.5px;font-weight:700;padding:8px 12px;border-radius:9px}
+  .appetite-cmp.bad{background:#fdecea;color:var(--sev)}
+  .appetite-cmp.good{background:#e8f3e9;color:var(--low)}
+  .modal-f{padding:14px 22px 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .modal-f .right{display:flex;gap:8px}
+  .readonly-note{font-size:12px;color:var(--muted);align-self:center}
+
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:99px;font-weight:600;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:99;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+  .toast.show{opacity:1}
+  footer{max-width:1500px;margin:0 auto;padding:0 28px 36px;color:var(--muted);font-size:12px}
+  @media print{header .head-controls,nav,.filters,.modal,.overlay{display:none!important}.view{display:block!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-top">
+    <div class="brand">
+      <h1>TCF Risk Register <span class="chip">DRAFT — for SLT discussion</span></h1>
+      <div class="sub">Built on the TCF Risk Taxonomy v3 · 5×5 residual scoring · appetite-aware</div>
+    </div>
+    <div class="head-controls">
+      <label for="role">I am</label>
+      <select id="role" onchange="setRole(this.value)">
+        <option value="viewer">Viewer (read-only)</option>
+        <option value="lead">Risk lead (edit all)</option>
+        <option value="Julia">Julia (CEO)</option>
+        <option value="Nikesh">Nikesh (Fellowship)</option>
+        <option value="Jacqui">Jacqui (Engagement)</option>
+        <option value="Chris">Chris (Development)</option>
+        <option value="Jim">Jim (COO)</option>
+      </select>
+      <button class="btn-ghost" onclick="exportJSON(false)">Export all (JSON)</button>
+      <button class="btn-ghost" id="exportMineBtn" onclick="exportJSON(true)" style="display:none">Export my areas</button>
+      <button class="btn-ghost" onclick="document.getElementById('importFile').click()">Import / merge</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(this)">
+      <button class="btn-ghost" onclick="exportCSV()">CSV</button>
+    </div>
+  </div>
+  <nav>
+    <button id="tab-dashboard" class="active" onclick="showView('dashboard')">Dashboard</button>
+    <button id="tab-register" onclick="showView('register')">Risk register</button>
+    <button id="tab-taxonomy" onclick="showView('taxonomy')">Taxonomy &amp; appetite</button>
+  </nav>
+</header>
+
+<main>
+  <!-- DASHBOARD -->
+  <section id="view-dashboard" class="view active">
+    <div class="kpis" id="kpis"></div>
+    <div class="dash-grid">
+      <div>
+        <div class="card">
+          <h3>Residual risk heatmap <span class="hint">click a cell to drill in</span></h3>
+          <div class="heatwrap">
+            <div class="axis-y">Likelihood →</div>
+            <div>
+              <div class="heat" id="heat"></div>
+              <div class="axis-x" id="heatAxisX"></div>
+              <div class="axis-x-label" style="display:block">Impact →</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Outside draft appetite <span class="hint">residual score above the tolerance for the area's appetite</span></h3>
+          <div class="breach-list" id="breaches"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h3>Risks by Level 1 category <span class="hint">coloured by severity band · click to filter</span></h3>
+          <div class="bars" id="bars"></div>
+        </div>
+        <div class="card">
+          <h3>Top residual risks</h3>
+          <div class="breach-list" id="topRisks"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- REGISTER -->
+  <section id="view-register" class="view">
+    <div class="reg-head">
+      <div class="filters">
+        <input type="text" id="fSearch" placeholder="Search risks, controls, actions…" oninput="renderRegister()">
+        <select id="fCat" onchange="renderRegister()"><option value="">All categories</option></select>
+        <select id="fOwner" onchange="renderRegister()"><option value="">All owners</option></select>
+        <select id="fApp" onchange="renderRegister()">
+          <option value="">All appetites</option>
+          <option value="averse">Averse</option>
+          <option value="balanced-averse">Balanced: averse</option>
+          <option value="balanced-seeking">Balanced: seeking</option>
+          <option value="seeking">Seeking</option>
+        </select>
+        <select id="fStatus" onchange="renderRegister()">
+          <option value="">All statuses</option><option>Open</option><option>Monitoring</option><option>Closed</option>
+        </select>
+        <span class="toggle" id="fBreach" onclick="this.classList.toggle('on');renderRegister()">⚠ Outside appetite</span>
+        <span class="toggle" id="fOverdue" onclick="this.classList.toggle('on');renderRegister()">⏰ Review overdue</span>
+        <button class="btn-soft" onclick="clearFilters()">Clear</button>
+      </div>
+      <button class="btn-primary" id="addBtn" onclick="openModal(null)">＋ Add risk</button>
+    </div>
+    <div class="count-note" id="regCount"></div>
+    <table>
+      <thead><tr>
+        <th onclick="sortBy('id')">Ref <span class="arr" id="arr-id"></span></th>
+        <th onclick="sortBy('title')">Risk <span class="arr" id="arr-title"></span></th>
+        <th onclick="sortBy('cat')">Category / area <span class="arr" id="arr-cat"></span></th>
+        <th onclick="sortBy('owner')">Owner <span class="arr" id="arr-owner"></span></th>
+        <th onclick="sortBy('score')">Score <span class="arr" id="arr-score"></span></th>
+        <th>Appetite check</th>
+        <th onclick="sortBy('review')">Next review <span class="arr" id="arr-review"></span></th>
+        <th onclick="sortBy('status')">Status <span class="arr" id="arr-status"></span></th>
+      </tr></thead>
+      <tbody id="regBody"></tbody>
+    </table>
+  </section>
+
+  <!-- TAXONOMY -->
+  <section id="view-taxonomy" class="view">
+    <div class="legend" id="taxLegend"></div>
+    <div class="tax-grid" id="taxGrid"></div>
+    <p class="floor-note">Whatever the setting, legal and regulatory compliance, safeguarding, and the safety of staff and Fellows are always managed with full risk aversion. Appetite is owned and set by the Board; everything here is a proposal to shape that conversation.</p>
+  </section>
+</main>
+
+<footer>
+  Data is saved in this browser automatically. To share updates, use <strong>Export my areas</strong> (or Export all) and send the file; the recipient uses <strong>Import / merge</strong> — newer edits win per risk. <span id="resetWrap"><button class="btn-danger" style="padding:3px 10px;font-size:11.5px" onclick="resetBaseline()">Reset to baseline</button></span>
+</footer>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <h2 id="mTitle">Risk</h2>
+        <div class="risk-sub" id="mSub"></div>
+      </div>
+      <button class="btn-soft" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-b">
+      <div class="fld full"><label>Risk title</label><input id="mRiskTitle" type="text"></div>
+      <div class="fld full"><label>Description — cause and consequence</label><textarea id="mDesc"></textarea></div>
+      <div class="fld full"><label>Taxonomy area (sets category, owner and appetite)</label><select id="mArea" onchange="refreshScoreUI()"></select></div>
+      <div class="fld full">
+        <div class="scorebox">
+          <div class="picker"><label>Likelihood (1–5)</label><div class="nums" id="mLike"></div></div>
+          <div class="picker"><label>Impact (1–5)</label><div class="nums" id="mImp"></div></div>
+          <div class="score-big" id="mScore"><span class="v">–</span><span class="b"></span></div>
+          <div class="appetite-cmp" id="mAppCmp"></div>
+        </div>
+      </div>
+      <div class="fld full"><label>Key controls in place</label><textarea id="mControls" placeholder="One per line"></textarea></div>
+      <div class="fld full"><label>Planned actions</label><textarea id="mActions" placeholder="One per line"></textarea></div>
+      <div class="fld"><label>Status</label><select id="mStatus"><option>Open</option><option>Monitoring</option><option>Closed</option></select></div>
+      <div class="fld"><label>Next review</label><input id="mReview" type="date"></div>
+      <div class="fld"><label>Draft placeholder?</label><select id="mDraft"><option value="yes">Yes — draft, for SLT to confirm</option><option value="no">No — confirmed</option></select></div>
+      <div class="fld"><label>Last updated</label><input id="mUpdated" type="text" disabled></div>
+    </div>
+    <div class="modal-f">
+      <div><button class="btn-danger" id="mDelete" onclick="deleteRisk()">Delete risk</button></div>
+      <div class="right">
+        <span class="readonly-note" id="mReadonly" style="display:none"></span>
+        <button class="btn-soft" onclick="closeModal()">Cancel</button>
+        <button class="btn-primary" id="mSave" onclick="saveRisk()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============ TAXONOMY (DRAFT v3) ============ */
+const APPETITES = {
+  "averse":          {label:"Averse",            desc:"Minimise or eliminate risk wherever practicable", max:4,  color:"#A81B12", fg:"#fff"},
+  "balanced-averse": {label:"Balanced: averse",  desc:"Minimise risk without chasing elimination",       max:9,  color:"#E0837B", fg:"#3a120e"},
+  "balanced-seeking":{label:"Balanced: seeking", desc:"Accept calculated risk proportionate to the opportunity", max:15, color:"#F5C2BC", fg:"#3a120e"},
+  "seeking":         {label:"Seeking",           desc:"Accept risk in pursuit of bigger returns",        max:25, color:"#ffffff", fg:"#3a120e"}
+};
+const TAXONOMY = [
+ {ref:"1", name:"Strategy & Governance", owner:"Julia (CEO)", areas:[
+   {ref:"1.1", name:"Strategy delivery and prioritisation", app:"balanced-seeking"},
+   {ref:"1.2", name:"Board, committee and Advisory Council effectiveness", app:"balanced-averse"},
+   {ref:"1.3", name:"Charity Commission and regulatory compliance", app:"averse"},
+   {ref:"1.4", name:"External partnerships and positioning", app:"balanced-seeking"},
+   {ref:"1.5", name:"External environment and political change", app:"balanced-averse"}]},
+ {ref:"2", name:"Fellowship Programme", owner:"Nikesh (Fellowship)", areas:[
+   {ref:"2.1", name:"Fair and equitable Fellowship selection", app:"averse"},
+   {ref:"2.2", name:"Fellow safety and security overseas", app:"averse"},
+   {ref:"2.3", name:"Safeguarding", app:"averse"},
+   {ref:"2.4", name:"Grant management and Activate delivery", app:"balanced-averse"}]},
+ {ref:"3", name:"Engagement & Reputation", owner:"Jacqui (Engagement)", areas:[
+   {ref:"3.1", name:"Programme and theme design", app:"balanced-seeking"},
+   {ref:"3.2", name:"Brand and reputation, incl. sensitive programme areas", app:"balanced-averse"},
+   {ref:"3.3", name:"Media and crisis communications", app:"balanced-averse"},
+   {ref:"3.4", name:"Fellow engagement and network experience", app:"balanced-seeking"},
+   {ref:"3.5", name:"Events and convening", app:"balanced-seeking"},
+   {ref:"3.6", name:"Knowledge curation and content accuracy", app:"balanced-averse"}]},
+ {ref:"4", name:"Fundraising", owner:"Chris (Development)", areas:[
+   {ref:"4.1", name:"Fundraising innovation and new income streams", app:"seeking"},
+   {ref:"4.2", name:"Income concentration and pipeline resilience", app:"balanced-averse"},
+   {ref:"4.3", name:"Donor due diligence and ethical acceptance", app:"averse"},
+   {ref:"4.4", name:"Restricted funds and donor compliance", app:"averse"},
+   {ref:"4.5", name:"Activate funding and donor cannibalisation", app:"balanced-seeking"},
+   {ref:"4.6", name:"Case for support and impact evidence", app:"balanced-seeking"}]},
+ {ref:"5", name:"Finance & Endowment", owner:"Jim (COO)", areas:[
+   {ref:"5.1", name:"Endowment performance and drawdown", app:"balanced-seeking"},
+   {ref:"5.2", name:"Liquidity, reserves and solvency", app:"averse"},
+   {ref:"5.3", name:"Budgeting, forecasting and reporting", app:"balanced-averse"},
+   {ref:"5.4", name:"Fraud and financial crime", app:"averse"}]},
+ {ref:"6", name:"People & Culture", owner:"Julia (CEO)", areas:[
+   {ref:"6.1", name:"Recruitment, retention and capability", app:"balanced-averse"},
+   {ref:"6.2", name:"Wellbeing, health and safety", app:"averse"},
+   {ref:"6.3", name:"Diversity & Inclusion in our workforce", app:"balanced-averse"},
+   {ref:"6.4", name:"Culture, capacity and change fatigue", app:"balanced-averse"},
+   {ref:"6.5", name:"Key person dependency", app:"balanced-averse"}]},
+ {ref:"7", name:"Change & Transformation", owner:"Jim (COO)", areas:[
+   {ref:"7.1", name:"Change portfolio prioritisation and sequencing", app:"balanced-averse"},
+   {ref:"7.2", name:"Portal design, delivery and adoption", app:"balanced-seeking"},
+   {ref:"7.3", name:"Office move delivery", app:"balanced-averse"},
+   {ref:"7.4", name:"AI adoption and innovation", app:"balanced-seeking"},
+   {ref:"7.5", name:"Benefits realisation and ways of working", app:"balanced-averse"}]},
+ {ref:"8", name:"Operations, Tech & Data", owner:"Jim (COO)", areas:[
+   {ref:"8.1", name:"Cyber security and IT resilience", app:"averse"},
+   {ref:"8.2", name:"Tech system suitability, procurement, integration and data quality", app:"balanced-averse"},
+   {ref:"8.3", name:"Data protection and privacy", app:"averse"},
+   {ref:"8.4", name:"Facilities, business continuity and crisis management", app:"balanced-averse"},
+   {ref:"8.5", name:"Suppliers and third parties", app:"balanced-averse"}]}
+];
+
+/* ============ BASELINE DRAFT RISKS ============ */
+const BASE = "2026-06-10T00:00:00Z";
+const BASELINE_RISKS = [
+ {id:"R01", l2:"1.1", l:3, i:4, title:"Strategy commitments outpace capacity", desc:"The strategy carries more commitments than team capacity and budget can deliver, so priorities slip and credibility with the Board and team erodes.", controls:["Annual business planning aligned to strategy","Quarterly SLT review of strategic priorities"], actions:["Agree explicit stop/defer list alongside 2026-27 plan"], review:"2026-09-30"},
+ {id:"R02", l2:"1.2", l:2, i:3, title:"Board and committee effectiveness weakens", desc:"Trustee turnover, skills gaps or poor information flows weaken Board and committee oversight and slow key decisions.", controls:["Skills audit and structured trustee recruitment","Annual Board effectiveness review"], actions:["Refresh committee terms of reference"], review:"2026-11-30"},
+ {id:"R03", l2:"1.3", l:2, i:4, title:"Regulatory duty missed", desc:"A Charity Commission reporting duty (serious incident, annual return, governance requirement) is missed or mishandled, leading to regulatory intervention and reputational damage.", controls:["Compliance calendar with named owners","Serious incident reporting policy"], actions:["Annual governance compliance health-check with external review"], review:"2026-08-31"},
+ {id:"R04", l2:"1.4", l:3, i:3, title:"Key external partnership stalls", desc:"A strategically important partnership fails to launch or stalls, reducing reach and positioning benefits we have planned around.", controls:["Partnership criteria and due diligence","SLT sponsor for each major partnership"], actions:["Pipeline review of partnership prospects"], review:"2026-10-31"},
+ {id:"R05", l2:"1.5", l:3, i:3, title:"Political and policy shifts reduce relevance", desc:"Changes in the external and political environment reduce the relevance of our themes or constrain Fellows' ability to influence change.", controls:["Horizon scanning at SLT and Board","Flexible theme-setting process"], actions:["Build scenario thinking into 2027 theme selection"], review:"2026-12-31"},
+ {id:"R06", l2:"2.1", l:2, i:4, title:"Bias or inconsistency in selection", desc:"Selection processes produce biased or inconsistent outcomes, undermining fairness, equity ambitions and trust in the Fellowship.", controls:["Structured scoring criteria and panel training","Diversity monitoring of applicant pipeline"], actions:["Independent equity review of selection round"], review:"2026-09-30"},
+ {id:"R07", l2:"2.2", l:2, i:5, title:"Serious harm to a Fellow overseas", desc:"A Fellow suffers serious harm while travelling overseas in a fragile or high-risk context, with duty-of-care, legal and reputational consequences.", controls:["Travel risk assessment and approval process","Travel insurance and emergency assistance provider","FCDO advice thresholds"], actions:["Test emergency response protocol with a live exercise"], review:"2026-07-31"},
+ {id:"R08", l2:"2.3", l:2, i:5, title:"Safeguarding incident", desc:"A safeguarding incident involving a Fellow, staff member or programme participant occurs or is handled poorly, causing harm and regulatory exposure.", controls:["Safeguarding policy, training and DSL","Incident reporting and escalation route"], actions:["Annual safeguarding audit and refresher training"], review:"2026-07-31"},
+ {id:"R09", l2:"2.4", l:2, i:3, title:"Grant misuse or Activate slippage", desc:"Grant funds are misused or Activate awards fail to deliver milestones, weakening impact and donor confidence.", controls:["Grant agreements with payment milestones","Monitoring and reporting requirements"], actions:["Tighten Activate progress reporting cycle"], review:"2026-10-31"},
+ {id:"R10", l2:"3.1", l:3, i:3, title:"Themes fail to attract strong fields", desc:"Programme and theme design fails to attract strong, diverse applicant fields, weakening Fellowship quality and impact.", controls:["Theme consultation with sector partners","Application data review by theme"], actions:["Evaluate 2026 themes' applicant quality"], review:"2026-11-30"},
+ {id:"R11", l2:"3.2", l:3, i:4, title:"Criticism over a sensitive programme area", desc:"A sensitive programme area or a Fellow's views/conduct draws public criticism that damages TCF's brand and stakeholder trust.", controls:["Editorial and sign-off standards","Sensitive areas watch-list with comms plans"], actions:["Agree positioning lines for highest-sensitivity areas"], review:"2026-09-30"},
+ {id:"R12", l2:"3.3", l:2, i:4, title:"Poor crisis communications response", desc:"A negative media story breaks and our response is slow or mishandled, amplifying reputational damage.", controls:["Crisis comms protocol and spokesperson training","Out-of-hours media contact arrangements"], actions:["Run a crisis comms simulation with SLT"], review:"2026-10-31"},
+ {id:"R13", l2:"3.4", l:3, i:3, title:"Fellows disengage after award", desc:"Fellows disengage after their award year, weakening the network, impact stories and the case for support.", controls:["Fellow engagement programme and comms","Network data in CRM"], actions:["Define engagement measures for the new portal"], review:"2026-12-31"},
+ {id:"R14", l2:"3.5", l:2, i:3, title:"Flagship event under-delivers", desc:"A flagship event under-delivers on attendance, experience or safety, wasting budget and denting reputation.", controls:["Event planning checklist incl. H&S","Post-event evaluation"], actions:["Set success criteria per event in 2026-27 plan"], review:"2026-11-30"},
+ {id:"R15", l2:"3.6", l:2, i:3, title:"Inaccurate published content", desc:"Inaccurate or poorly curated published content misrepresents evidence or Fellows' work, damaging credibility.", controls:["Editorial review process","Correction and takedown procedure"], actions:["Refresh content accuracy guidance for the team"], review:"2026-12-31"},
+ {id:"R16", l2:"4.1", l:4, i:3, title:"New income streams fail to break even", desc:"Investment in fundraising innovation and new income streams fails to break even within the agreed horizon, consuming budget without return. Appetite here is deliberately high.", controls:["Business case per new income stream","Stage-gate review of pilots"], actions:["Set kill/scale criteria for each pilot"], review:"2026-10-31"},
+ {id:"R17", l2:"4.2", l:3, i:4, title:"Income concentration", desc:"Over-reliance on a small number of funders or income lines leaves the budget exposed if one fails to renew.", controls:["Income mix monitoring in management accounts","Pipeline reviews with Development team"], actions:["Agree concentration limits and diversification targets"], review:"2026-09-30"},
+ {id:"R18", l2:"4.3", l:2, i:4, title:"Unethical donation accepted", desc:"A donation is accepted from a source later shown to be unethical or incompatible with our values, forcing return of funds and causing reputational harm.", controls:["Donation acceptance and refusal policy","Due diligence thresholds and escalation"], actions:["Refresh due diligence thresholds for major gifts"], review:"2026-08-31"},
+ {id:"R19", l2:"4.4", l:1, i:4, title:"Restricted funds misapplied", desc:"Restricted funds are spent outside donor terms, creating repayment liability and damaging funder relationships.", controls:["Restricted fund tracking in finance system","Grant compliance checks before spend"], actions:["Annual restricted funds compliance review"], review:"2026-11-30"},
+ {id:"R20", l2:"4.5", l:3, i:3, title:"Activate fundraising displaces core giving", desc:"Fundraising for Activate cannibalises existing donor giving rather than adding net new income.", controls:["Donor journey mapping across propositions","Income attribution monitoring"], actions:["Review first-year Activate giving data for displacement"], review:"2026-12-31"},
+ {id:"R21", l2:"4.6", l:3, i:3, title:"Weak impact evidence undermines asks", desc:"The case for support lacks robust impact evidence, weakening major asks and bid competitiveness.", controls:["Impact framework and Fellow outcome data","Case for support refresh cycle"], actions:["Commission impact evidence review"], review:"2026-10-31"},
+ {id:"R22", l2:"5.1", l:3, i:4, title:"Endowment downturn cuts drawdown", desc:"A sustained market downturn reduces endowment value, forcing a cut in drawdown and therefore charitable spend.", controls:["Investment policy and diversified portfolio","Quarterly performance review with managers","Drawdown smoothing formula"], actions:["Stress-test drawdown under bear-market scenarios"], review:"2026-09-30"},
+ {id:"R23", l2:"5.2", l:1, i:4, title:"Liquidity shortfall", desc:"A cash shortfall forces unplanned asset sales at depressed prices or threatens our ability to meet obligations.", controls:["Rolling cashflow forecast","Reserves policy with defined floor"], actions:["Confirm minimum liquidity buffer with IC"], review:"2026-08-31"},
+ {id:"R24", l2:"5.3", l:2, i:3, title:"Forecast errors mislead decisions", desc:"Budgeting or forecasting errors lead SLT and Board to take decisions on flawed numbers.", controls:["Monthly management accounts and variance analysis","Reforecast at mid-year"], actions:["Improve budget-holder reporting in new finance cycle"], review:"2026-10-31"},
+ {id:"R25", l2:"5.4", l:2, i:4, title:"Fraud or financial crime", desc:"Payment fraud, cyber-enabled fraud or internal financial crime causes loss and regulatory reporting obligations.", controls:["Segregation of duties and dual authorisation","Supplier bank detail verification","Fraud response plan"], actions:["Run fraud awareness training incl. invoice fraud scenarios"], review:"2026-08-31"},
+ {id:"R26", l2:"6.1", l:3, i:3, title:"Cannot recruit or retain key skills", desc:"We cannot recruit or retain people with the skills the strategy needs, slowing delivery and overloading the existing team.", controls:["Pay benchmarking and benefits review","Development plans and appraisals"], actions:["Workforce plan aligned to 2026-27 priorities"], review:"2026-11-30"},
+ {id:"R27", l2:"6.2", l:2, i:3, title:"Work-related stress or safety incident", desc:"Workload, change pressure or unsafe conditions cause work-related stress or a health and safety incident.", controls:["H&S policy, risk assessments and EAP","Wellbeing check-ins and workload reviews"], actions:["Stress risk assessment during change-heavy periods"], review:"2026-09-30"},
+ {id:"R28", l2:"6.3", l:2, i:3, title:"Workforce diversity ambitions stall", desc:"Recruitment and culture fail to improve workforce diversity and inclusion, undermining values and credibility.", controls:["Inclusive recruitment practices","D&I monitoring and action plan"], actions:["Review D&I data and refresh plan"], review:"2026-12-31"},
+ {id:"R29", l2:"6.4", l:4, i:3, title:"Change fatigue erodes capacity", desc:"The volume of concurrent change (portal, office move, AI, register overhaul) exceeds team capacity, causing fatigue, errors and attrition.", controls:["Change portfolio view at SLT","Sequencing decisions in planning"], actions:["Capacity-check the autumn change calendar before committing"], review:"2026-09-30"},
+ {id:"R30", l2:"6.5", l:3, i:3, title:"Key person dependency", desc:"Loss of a key person leaves critical knowledge or relationships uncovered, disrupting delivery.", controls:["Documented procedures for critical processes","Succession conversations at SLT"], actions:["Map single-person dependencies and mitigation per role"], review:"2026-11-30"},
+ {id:"R31", l2:"7.1", l:3, i:3, title:"Change portfolio poorly sequenced", desc:"Change initiatives are poorly prioritised or sequenced, so projects compete for the same people and benefits slip.", controls:["SLT change portfolio oversight","Project initiation gateway"], actions:["Adopt single sequenced change roadmap"], review:"2026-09-30"},
+ {id:"R32", l2:"7.2", l:3, i:4, title:"Portal slips or adoption is poor", desc:"The portal is delayed, over budget or poorly adopted by Fellows and staff, undermining a flagship investment.", controls:["Project board with stage gates","User research and testing plan"], actions:["Define adoption targets and post-launch support model"], review:"2026-08-31"},
+ {id:"R33", l2:"7.3", l:3, i:3, title:"Office move disrupts operations", desc:"The office move runs late or over budget, or disrupts operations and team experience more than planned.", controls:["Move project plan with named lead","Budget contingency"], actions:["Confirm continuity arrangements for move window"], review:"2026-08-31"},
+ {id:"R34", l2:"7.4", l:3, i:3, title:"AI adoption without guardrails", desc:"AI tools are adopted without guardrails (quality, privacy, ethics) — or so cautiously that efficiency opportunities are missed.", controls:["AI usage guidance for staff","Pilot-first approach to new tools"], actions:["Agree AI policy covering data, quality and disclosure"], review:"2026-10-31"},
+ {id:"R35", l2:"7.5", l:3, i:3, title:"Change benefits not realised", desc:"Projects complete but intended benefits and new ways of working never materialise, so investment is wasted.", controls:["Benefits defined in business cases","Post-implementation reviews"], actions:["Introduce benefits tracking after each major go-live"], review:"2026-12-31"},
+ {id:"R36", l2:"8.1", l:3, i:4, title:"Cyber attack or major IT outage", desc:"Ransomware, phishing compromise or a major outage disrupts operations and may expose data, with recovery costs and reputational harm.", controls:["MFA, endpoint protection and patching","Backups with restore testing","Cyber Essentials and staff phishing training"], actions:["Test incident response and restore from backup"], review:"2026-07-31"},
+ {id:"R37", l2:"8.2", l:3, i:3, title:"Systems unsuitable or poorly integrated", desc:"Core systems are unsuitable, poorly integrated or hold poor-quality data, creating inefficiency and weak reporting.", controls:["Systems roadmap","Data quality standards in CRM"], actions:["Data quality baseline ahead of portal integration"], review:"2026-10-31"},
+ {id:"R38", l2:"8.3", l:2, i:4, title:"Personal data breach", desc:"A personal data breach (Fellows, applicants, donors or staff) triggers ICO reporting, individual harm and reputational damage.", controls:["UK GDPR policies, training and DPIAs","Retention schedule and access controls"], actions:["DPIA for portal and AI tools before go-live"], review:"2026-08-31"},
+ {id:"R39", l2:"8.4", l:2, i:4, title:"Business continuity event", desc:"A facilities failure or wider incident interrupts operations and we cannot continue critical activities within tolerable time.", controls:["Business continuity plan","Remote-working capability"], actions:["Refresh BCP for new office and test it"], review:"2026-11-30"},
+ {id:"R40", l2:"8.5", l:2, i:3, title:"Critical supplier failure", desc:"A critical supplier or third party fails, under-performs or creates a security/compliance exposure.", controls:["Contracts with SLAs for key suppliers","Supplier due diligence at onboarding"], actions:["Map critical suppliers and exit/contingency options"], review:"2026-12-31"},
+ {id:"R41", l2:"1.3", l:1, i:3, title:"Gift Aid and tax compliance error", desc:"Errors in Gift Aid claims or other tax compliance lead to repayment, penalties and HMRC scrutiny.", controls:["Gift Aid procedures and audit trail","External audit review"], actions:["Spot-check Gift Aid declarations annually"], review:"2026-12-31"}
+].map(r => ({...r, status:"Open", draft:true, updated:BASE}));
+
+/* ============ STATE ============ */
+const LS_KEY = "tcf-risk-register-v1";
+const TODAY = new Date().toISOString().slice(0,10);
+let risks = loadRisks();
+let role = localStorage.getItem(LS_KEY+"-role") || "viewer";
+let sortKey = "score", sortDir = -1;
+let editingId = null, pickL = 3, pickI = 3;
+
+const AREA_MAP = {};
+TAXONOMY.forEach(cat => cat.areas.forEach(a => AREA_MAP[a.ref] = {...a, cat}));
+
+function loadRisks(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const d = JSON.parse(raw); if(Array.isArray(d) && d.length) return d; }
+  }catch(e){}
+  return JSON.parse(JSON.stringify(BASELINE_RISKS));
+}
+function persist(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(risks)); }catch(e){} }
+
+/* ============ HELPERS ============ */
+function score(r){ return r.l * r.i; }
+function band(s){ return s>=16 ? "Severe" : s>=10 ? "High" : s>=5 ? "Moderate" : "Low"; }
+function bandColor(s){ return s>=16 ? "var(--sev)" : s>=10 ? "var(--high)" : s>=5 ? "var(--mod)" : "var(--low)"; }
+function bandHex(s){ return s>=16 ? "#C62828" : s>=10 ? "#EF6C00" : s>=5 ? "#F2B705" : "#2E7D32"; }
+function area(r){ return AREA_MAP[r.l2]; }
+function appetite(r){ return APPETITES[area(r).app]; }
+function outsideAppetite(r){ return r.status!=="Closed" && score(r) > appetite(r).max; }
+function overdue(r){ return r.status!=="Closed" && r.review && r.review < TODAY; }
+function ownerFirst(owner){ return owner.split(" ")[0]; }
+function canEdit(r){
+  if(role==="lead") return true;
+  if(role==="viewer") return false;
+  return ownerFirst(area(r).cat.owner) === role;
+}
+function canEditArea(l2ref){
+  if(role==="lead") return true;
+  if(role==="viewer") return false;
+  return ownerFirst(AREA_MAP[l2ref].cat.owner) === role;
+}
+function esc(s){ return String(s??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove("show"), 2600);
+}
+
+/* ============ ROLE ============ */
+function setRole(v){
+  role = v;
+  localStorage.setItem(LS_KEY+"-role", v);
+  document.getElementById("exportMineBtn").style.display = (v!=="viewer" && v!=="lead") ? "" : "none";
+  document.getElementById("addBtn").style.display = (v==="viewer") ? "none" : "";
+  renderAll();
+}
+
+/* ============ VIEWS ============ */
+function showView(v){
+  document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
+  document.getElementById("view-"+v).classList.add("active");
+  document.getElementById("tab-"+v).classList.add("active");
+}
+
+/* ---- dashboard ---- */
+function renderDashboard(){
+  const open = risks.filter(r=>r.status!=="Closed");
+  const breaches = open.filter(outsideAppetite);
+  const severe = open.filter(r=>score(r)>=16);
+  const od = open.filter(overdue);
+  const kp = document.getElementById("kpis");
+  kp.innerHTML = `
+    <div class="kpi neutral" onclick="goRegister({})"><div class="n">${risks.length}</div><div class="t">Risks on register</div></div>
+    <div class="kpi alert" onclick="goRegister({breach:true})"><div class="n">${breaches.length}</div><div class="t">Outside draft appetite</div></div>
+    <div class="kpi warn" onclick="goRegister({minScore:16})"><div class="n">${severe.length}</div><div class="t">Severe (16–25)</div></div>
+    <div class="kpi warn" onclick="goRegister({overdue:true})"><div class="n">${od.length}</div><div class="t">Reviews overdue</div></div>
+    <div class="kpi ok"><div class="n">${risks.filter(r=>r.draft).length}</div><div class="t">Draft placeholders to confirm</div></div>`;
+
+  // heatmap: rows likelihood 5→1, cols impact 1→5
+  const heat = document.getElementById("heat");
+  let html = "";
+  for(let L=5; L>=1; L--){
+    for(let I=1; I<=5; I++){
+      const cell = open.filter(r=>r.l===L && r.i===I);
+      const s = L*I;
+      html += `<div class="cell ${cell.length? "":"empty"}" style="background:${bandHex(s)}" title="Likelihood ${L} × Impact ${I} = ${s}" onclick="${cell.length?`goRegister({cell:[${L},${I}]})`:""}">
+        <span class="c">${cell.length||""}</span><span class="s">${L}×${I}</span></div>`;
+    }
+  }
+  heat.innerHTML = html;
+  document.getElementById("heatAxisX").innerHTML = [1,2,3,4,5].map(i=>`<span>${i}</span>`).join("");
+
+  // bars by L1
+  const bars = document.getElementById("bars");
+  const maxN = Math.max(...TAXONOMY.map(c=>open.filter(r=>area(r).cat.ref===c.ref).length), 1);
+  bars.innerHTML = TAXONOMY.map(c=>{
+    const rs = open.filter(r=>area(r).cat.ref===c.ref).sort((a,b)=>score(b)-score(a));
+    const segs = rs.map(r=>`<div class="seg" style="width:${100/maxN}%;background:${bandHex(score(r))};border-right:1.5px solid #fff" title="${esc(r.title)} (${score(r)})"></div>`).join("");
+    return `<div class="row" onclick="goRegister({cat:'${c.ref}'})"><div class="lbl">${esc(c.name)}</div><div class="track">${segs}</div><div class="tot">${rs.length}</div></div>`;
+  }).join("");
+
+  // breach list
+  const bl = document.getElementById("breaches");
+  bl.innerHTML = breaches.length ? breaches.sort((a,b)=>score(b)-score(a)).map(riskRowMini).join("")
+    : `<div class="none-msg">No risks currently sit above their area's draft appetite. 🎉</div>`;
+
+  // top risks
+  const top = [...open].sort((a,b)=>score(b)-score(a)).slice(0,6);
+  document.getElementById("topRisks").innerHTML = top.map(riskRowMini).join("");
+}
+function riskRowMini(r){
+  const a = area(r);
+  return `<div class="item" onclick="openModal('${r.id}')">
+    <div class="score" style="background:${bandHex(score(r))}">${score(r)}</div>
+    <div><div class="ti">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}</div>
+    <div class="meta">${esc(a.cat.name)} · ${esc(a.name)} · appetite: ${appetite(r).label}${outsideAppetite(r)?' · <span class="breach-flag">outside appetite</span>':""}</div></div></div>`;
+}
+
+/* ---- register ---- */
+let cellFilter = null, minScoreFilter = null;
+function goRegister(opts){
+  clearFilters(true);
+  if(opts.cat) document.getElementById("fCat").value = opts.cat;
+  if(opts.breach) document.getElementById("fBreach").classList.add("on");
+  if(opts.overdue) document.getElementById("fOverdue").classList.add("on");
+  if(opts.cell) cellFilter = opts.cell;
+  if(opts.minScore) minScoreFilter = opts.minScore;
+  showView("register");
+  renderRegister();
+}
+function clearFilters(noRender){
+  document.getElementById("fSearch").value="";
+  ["fCat","fOwner","fApp","fStatus"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("fBreach").classList.remove("on");
+  document.getElementById("fOverdue").classList.remove("on");
+  cellFilter = null; minScoreFilter = null;
+  if(!noRender) renderRegister();
+}
+function sortBy(k){
+  if(sortKey===k) sortDir*=-1; else {sortKey=k; sortDir = (k==="score")? -1 : 1;}
+  renderRegister();
+}
+function sortVal(r,k){
+  switch(k){
+    case "score": return score(r);
+    case "cat": return area(r).cat.ref + r.l2;
+    case "owner": return area(r).cat.owner;
+    case "review": return r.review||"9999";
+    default: return r[k]||"";
+  }
+}
+function renderRegister(){
+  const q = document.getElementById("fSearch").value.trim().toLowerCase();
+  const fc = document.getElementById("fCat").value;
+  const fo = document.getElementById("fOwner").value;
+  const fa = document.getElementById("fApp").value;
+  const fs = document.getElementById("fStatus").value;
+  const fb = document.getElementById("fBreach").classList.contains("on");
+  const fod = document.getElementById("fOverdue").classList.contains("on");
+
+  let list = risks.filter(r=>{
+    const a = area(r);
+    if(fc && a.cat.ref!==fc) return false;
+    if(fo && a.cat.owner!==fo) return false;
+    if(fa && a.app!==fa) return false;
+    if(fs && r.status!==fs) return false;
+    if(fb && !outsideAppetite(r)) return false;
+    if(fod && !overdue(r)) return false;
+    if(cellFilter && (r.l!==cellFilter[0] || r.i!==cellFilter[1])) return false;
+    if(minScoreFilter && score(r)<minScoreFilter) return false;
+    if(q){
+      const hay = [r.id,r.title,r.desc,(r.controls||[]).join(" "),(r.actions||[]).join(" "),a.name,a.cat.name,a.cat.owner].join(" ").toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  list.sort((x,y)=>{ const a=sortVal(x,sortKey), b=sortVal(y,sortKey); return (a<b?-1:a>b?1:0)*sortDir; });
+
+  document.querySelectorAll("thead .arr").forEach(el=>el.textContent="");
+  const arr = document.getElementById("arr-"+sortKey); if(arr) arr.textContent = sortDir>0?"▲":"▼";
+
+  document.getElementById("regCount").textContent =
+    `${list.length} of ${risks.length} risks` + (cellFilter?` · heatmap cell L${cellFilter[0]}×I${cellFilter[1]}`:"") + (minScoreFilter?` · score ≥ ${minScoreFilter}`:"");
+
+  document.getElementById("regBody").innerHTML = list.map(r=>{
+    const a = area(r), s = score(r), app = appetite(r);
+    const lock = canEdit(r) ? "" : ` <span class="lockicon" title="Read-only for your role">🔒</span>`;
+    return `<tr onclick="openModal('${r.id}')">
+      <td style="font-weight:700;color:var(--muted)">${r.id}</td>
+      <td><div class="risk-title">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${lock}</div><div class="risk-sub">${esc(r.desc).slice(0,110)}${r.desc.length>110?"…":""}</div></td>
+      <td><div style="font-weight:700;font-size:12.5px">${esc(a.cat.name)}</div><div class="risk-sub">${a.ref} ${esc(a.name)}</div></td>
+      <td style="white-space:nowrap">${esc(a.cat.owner)}</td>
+      <td><span class="pill" style="background:${bandHex(s)}" title="L${r.l} × I${r.i} · ${band(s)}">${s}</span></td>
+      <td><span class="tag tag-app" style="background:${app.color};color:${app.fg}">${app.label}</span><br>${r.status==="Closed"?'<span class="risk-sub">closed</span>':outsideAppetite(r)?'<span class="breach-flag">▲ outside appetite</span>':'<span class="ok-flag">✓ within</span>'}</td>
+      <td style="white-space:nowrap">${r.review||"–"}${overdue(r)?' <span class="breach-flag">overdue</span>':""}</td>
+      <td>${r.status==="Closed"?'<span class="pill pill-outline" style="color:var(--muted)">Closed</span>':r.status==="Monitoring"?'<span class="pill pill-outline" style="color:var(--high)">Monitoring</span>':'<span class="pill pill-outline" style="color:var(--red-dark)">Open</span>'}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:28px">No risks match these filters.</td></tr>`;
+}
+
+/* ---- taxonomy ---- */
+function renderTaxonomy(){
+  document.getElementById("taxLegend").innerHTML = Object.values(APPETITES).map(a=>
+    `<span class="li"><span class="sw" style="background:${a.color}"></span>${a.label} — ${a.desc} (tolerates residual ≤ ${a.max})</span>`).join("");
+  document.getElementById("taxGrid").innerHTML = TAXONOMY.map(c=>{
+    const rows = c.areas.map(a=>{
+      const n = risks.filter(r=>r.l2===a.ref && r.status!=="Closed").length;
+      const br = risks.filter(r=>r.l2===a.ref && outsideAppetite(r)).length;
+      return `<div class="tax-area" onclick="goRegisterArea('${a.ref}')" title="${APPETITES[a.app].label}">
+        <span class="dot" style="background:${APPETITES[a.app].color}"></span>
+        <span class="anm">${a.ref} ${esc(a.name)}</span>
+        <span class="cnt">${n} risk${n===1?"":"s"}${br?` · <span class="breach-flag">${br}▲</span>`:""}${n===0?' · <span class="breach-flag">blind spot?</span>':""}</span></div>`;
+    }).join("");
+    return `<div class="tax-cat"><div class="cat-h"><div class="nm">${c.ref}. ${esc(c.name)}</div><div class="ow">Owner: ${esc(c.owner)}</div></div>${rows}</div>`;
+  }).join("");
+}
+function goRegisterArea(l2){
+  clearFilters(true);
+  document.getElementById("fSearch").value = AREA_MAP[l2].name;
+  showView("register"); renderRegister();
+}
+
+/* ============ MODAL ============ */
+function buildAreaOptions(sel, current){
+  sel.innerHTML = TAXONOMY.map(c=>`<optgroup label="${c.ref}. ${esc(c.name)} — ${esc(c.owner)}">`+
+    c.areas.map(a=>`<option value="${a.ref}" ${a.ref===current?"selected":""} ${(!canEditArea(a.ref)&&role!=="viewer")?"disabled":""}>${a.ref} ${esc(a.name)}</option>`).join("")+`</optgroup>`).join("");
+}
+function openModal(id){
+  editingId = id;
+  const r = id ? risks.find(x=>x.id===id) : null;
+  const isNew = !r;
+  const editable = isNew ? role!=="viewer" : canEdit(r);
+  document.getElementById("mTitle").textContent = isNew ? "Add risk" : r.id + " — " + (editable ? "edit risk" : "view risk");
+  document.getElementById("mSub").textContent = isNew ? "" : `Last updated ${(r.updated||"").slice(0,10)}`;
+  document.getElementById("mRiskTitle").value = r? r.title : "";
+  document.getElementById("mDesc").value = r? r.desc : "";
+  const defaultArea = (role!=="viewer" && role!=="lead")
+      ? (TAXONOMY.find(c=>ownerFirst(c.owner)===role)||TAXONOMY[0]).areas[0].ref
+      : "1.1";
+  buildAreaOptions(document.getElementById("mArea"), r? r.l2 : defaultArea);
+  pickL = r? r.l : 3; pickI = r? r.i : 3;
+  document.getElementById("mControls").value = r? (r.controls||[]).join("\n") : "";
+  document.getElementById("mActions").value = r? (r.actions||[]).join("\n") : "";
+  document.getElementById("mStatus").value = r? r.status : "Open";
+  document.getElementById("mReview").value = r? (r.review||"") : "";
+  document.getElementById("mDraft").value = r? (r.draft?"yes":"no") : "yes";
+  document.getElementById("mUpdated").value = r? (r.updated||"").slice(0,10) : TODAY;
+
+  ["mRiskTitle","mDesc","mArea","mControls","mActions","mStatus","mReview","mDraft"].forEach(fid=>
+    document.getElementById(fid).disabled = !editable);
+  document.getElementById("mSave").style.display = editable? "" : "none";
+  document.getElementById("mDelete").style.display = (editable && !isNew)? "" : "none";
+  const ro = document.getElementById("mReadonly");
+  ro.style.display = editable? "none" : "";
+  ro.textContent = role==="viewer" ? "Read-only — choose your name under “I am” to edit your areas."
+    : `Read-only — this area is owned by ${r? area(r).cat.owner : ""}.`;
+  buildPickers(editable);
+  refreshScoreUI();
+  document.getElementById("overlay").classList.add("open");
+}
+function buildPickers(editable){
+  const mk = (el, get, set) => {
+    el.innerHTML = [1,2,3,4,5].map(n=>`<button type="button" ${editable?"":"disabled"} class="${get()===n?"sel":""}">${n}</button>`).join("");
+    [...el.children].forEach((b,idx)=> b.onclick = ()=>{ if(!editable) return; set(idx+1); buildPickers(editable); refreshScoreUI(); });
+  };
+  mk(document.getElementById("mLike"), ()=>pickL, v=>pickL=v);
+  mk(document.getElementById("mImp"), ()=>pickI, v=>pickI=v);
+}
+function refreshScoreUI(){
+  const s = pickL*pickI;
+  const sb = document.getElementById("mScore");
+  sb.style.background = bandHex(s);
+  sb.querySelector(".v").textContent = s;
+  sb.querySelector(".b").textContent = band(s);
+  const l2 = document.getElementById("mArea").value;
+  const app = APPETITES[AREA_MAP[l2].app];
+  const cmp = document.getElementById("mAppCmp");
+  if(s > app.max){ cmp.className = "appetite-cmp bad"; cmp.innerHTML = `▲ Above appetite for this area<br><span style="font-weight:500">${app.label} tolerates ≤ ${app.max}</span>`; }
+  else { cmp.className = "appetite-cmp good"; cmp.innerHTML = `✓ Within appetite<br><span style="font-weight:500">${app.label} tolerates ≤ ${app.max}</span>`; }
+}
+function closeModal(){ document.getElementById("overlay").classList.remove("open"); }
+function nextId(){
+  let n = 0;
+  risks.forEach(r=>{ const m = /^R(\d+)$/.exec(r.id); if(m) n = Math.max(n, +m[1]); });
+  return "R" + String(n+1).padStart(2,"0");
+}
+function saveRisk(){
+  const title = document.getElementById("mRiskTitle").value.trim();
+  if(!title){ toast("Give the risk a title."); return; }
+  const obj = {
+    id: editingId || nextId(),
+    title,
+    desc: document.getElementById("mDesc").value.trim(),
+    l2: document.getElementById("mArea").value,
+    l: pickL, i: pickI,
+    controls: document.getElementById("mControls").value.split("\n").map(s=>s.trim()).filter(Boolean),
+    actions: document.getElementById("mActions").value.split("\n").map(s=>s.trim()).filter(Boolean),
+    status: document.getElementById("mStatus").value,
+    review: document.getElementById("mReview").value || "",
+    draft: document.getElementById("mDraft").value==="yes",
+    updated: new Date().toISOString()
+  };
+  if(!canEditArea(obj.l2)){ toast("You can only save risks in your own areas."); return; }
+  const idx = risks.findIndex(r=>r.id===obj.id);
+  if(idx>=0) risks[idx]=obj; else risks.push(obj);
+  persist(); closeModal(); renderAll(); toast(`${obj.id} saved.`);
+}
+function deleteRisk(){
+  const r = risks.find(x=>x.id===editingId);
+  if(!r) return;
+  if(!confirm(`Delete ${r.id} — “${r.title}”? This only affects your local copy until you export/share.`)) return;
+  risks = risks.filter(x=>x.id!==editingId);
+  persist(); closeModal(); renderAll(); toast("Risk deleted.");
+}
+
+/* ============ IMPORT / EXPORT ============ */
+function download(name, text, type){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text],{type}));
+  a.download = name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+function exportJSON(mineOnly){
+  let data = risks;
+  if(mineOnly){
+    data = risks.filter(r=>ownerFirst(area(r).cat.owner)===role);
+    if(!data.length){ toast("No risks in your areas yet."); return; }
+  }
+  const payload = { format:"tcf-risk-register", version:1, exported:new Date().toISOString(), exportedBy: role, risks:data };
+  download(`tcf-risk-register${mineOnly?"-"+role.toLowerCase():""}-${TODAY}.json`, JSON.stringify(payload,null,2), "application/json");
+  toast(`Exported ${data.length} risk${data.length===1?"":"s"}.`);
+}
+function importJSON(input){
+  const f = input.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try{
+      const payload = JSON.parse(rd.result);
+      const incoming = Array.isArray(payload) ? payload : payload.risks;
+      if(!Array.isArray(incoming)) throw new Error("no risks array");
+      let added=0, updated=0, skipped=0;
+      incoming.forEach(inR=>{
+        if(!inR.id || !AREA_MAP[inR.l2]){ skipped++; return; }
+        const idx = risks.findIndex(r=>r.id===inR.id);
+        if(idx<0){ risks.push(inR); added++; }
+        else if((inR.updated||"") > (risks[idx].updated||"")){ risks[idx]=inR; updated++; }
+        else skipped++;
+      });
+      persist(); renderAll();
+      toast(`Merged: ${added} added, ${updated} updated, ${skipped} unchanged/skipped.`);
+    }catch(e){ toast("Could not read that file — expected a register JSON export."); }
+    input.value = "";
+  };
+  rd.readAsText(f);
+}
+function exportCSV(){
+  const head = ["Ref","Title","Description","L1 category","L2 area","Owner","Likelihood","Impact","Score","Band","Appetite","Within appetite","Status","Next review","Controls","Actions","Draft","Updated"];
+  const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
+  const rows = risks.map(r=>{
+    const a = area(r);
+    return [r.id,r.title,r.desc,a.cat.name,`${a.ref} ${a.name}`,a.cat.owner,r.l,r.i,score(r),band(score(r)),appetite(r).label,outsideAppetite(r)?"NO — outside":"Yes",r.status,r.review,(r.controls||[]).join("; "),(r.actions||[]).join("; "),r.draft?"Draft":"Confirmed",(r.updated||"").slice(0,10)].map(q).join(",");
+  });
+  download(`tcf-risk-register-${TODAY}.csv`, [head.map(q).join(",")].concat(rows).join("\n"), "text/csv");
+  toast("CSV exported.");
+}
+function resetBaseline(){
+  if(!confirm("Replace all local data with the original baseline draft risks? Export first if you have edits to keep.")) return;
+  risks = JSON.parse(JSON.stringify(BASELINE_RISKS));
+  persist(); renderAll(); toast("Reset to baseline.");
+}
+
+/* ============ INIT ============ */
+function populateFilters(){
+  const fc = document.getElementById("fCat");
+  fc.innerHTML = '<option value="">All categories</option>' + TAXONOMY.map(c=>`<option value="${c.ref}">${c.ref}. ${esc(c.name)}</option>`).join("");
+  const owners = [...new Set(TAXONOMY.map(c=>c.owner))];
+  document.getElementById("fOwner").innerHTML = '<option value="">All owners</option>' + owners.map(o=>`<option>${esc(o)}</option>`).join("");
+}
+function renderAll(){ renderDashboard(); renderRegister(); renderTaxonomy(); }
+populateFilters();
+document.getElementById("role").value = role;
+setRole(role);
+</script>
+</body>
+</html>

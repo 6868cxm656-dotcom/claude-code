@@ -8,6 +8,24 @@ The repo's `cloudflare-pages` branch contains just `index.html` (the register).
 Cloudflare deploys from that branch, so every register update pushed to it goes
 live automatically.
 
+## If Cloudflare put you in the **Workers** flow instead of Pages
+
+Cloudflare's newer dashboard often creates a Git-connected **Worker** (deploying with
+`npx wrangler deploy`) rather than a Pages project. The branch supports both: it
+contains a `wrangler.jsonc` (named `tcf-risk-register`) and the register at
+`public/index.html`.
+
+- The build fails with *"Could not detect a directory containing static files"* only
+  if `wrangler.jsonc` is missing — pushing it fixes the next build automatically.
+- If the build complains about a **name mismatch**, your Worker project has a
+  different name from `tcf-risk-register` in `wrangler.jsonc` — align one to the other.
+- The site lands at `https://<name>.<your-subdomain>.workers.dev`.
+- To lock it down: **Zero Trust → Access → Applications → Add an application →
+  Self-hosted**, set the application domain to your full `….workers.dev` hostname,
+  and add the Allow policy for **Emails ending in** `@churchillfellowship.org`.
+  (Some dashboards offer a one-click "Enable Access" on the Worker's
+  Settings → Domains & Routes → workers.dev entry — same result.)
+
 ## One-time setup (~20 minutes, done by the repo owner)
 
 ### A. Make the GitHub repo private (if not already done)

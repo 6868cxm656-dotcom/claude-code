@@ -160,6 +160,18 @@
   .due{display:inline-block;background:#fdf3f2;color:var(--red-dark);font-weight:700;font-size:11px;border-radius:6px;padding:1px 7px;margin-left:6px;white-space:nowrap}
   .rref{color:var(--red);font-weight:700;cursor:pointer;text-decoration:underline dotted}
 
+  /* scoring rubric */
+  .rubric h5{font-size:12.5px;font-weight:800;margin:10px 0 6px}
+  .rubric table{box-shadow:none;border:1px solid var(--line);border-radius:10px;margin-bottom:4px}
+  .rubric th{cursor:default}
+  .rubric td{font-size:12px;padding:8px 10px;vertical-align:top}
+  .rubric .lvl{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;color:#fff;font-weight:800;font-size:12.5px}
+  .rubric .lvl-name{font-weight:800;white-space:nowrap}
+  .rubric-note{font-size:12px;color:var(--muted);margin-bottom:8px;max-width:980px}
+  details.rubric-fold summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--red-dark)}
+  details.rubric-fold{background:#faf8f7;border:1px solid var(--line);border-radius:9px;padding:8px 12px}
+  .num-col{text-align:center;font-weight:800;color:var(--muted)}
+
   /* change report */
   .delta{font-weight:800;font-size:12px;white-space:nowrap}
   .delta.worse{color:var(--sev)}.delta.better{color:var(--low)}.delta.same{color:var(--muted);font-weight:600}
@@ -255,6 +267,12 @@ window.onerror = function(msg, src, line){
           <h4>Full Board review</h4>
           <p>The Board reviews the risk register in full at each meeting, with the change report showing what has moved and why.</p></div>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>How we score risks <span class="hint">1–5 scales · residual = with current mitigation in place</span></h3>
+      <p class="rubric-note">Score <strong>likelihood</strong> over the next 12 months, with current controls operating. Score <strong>impact</strong> as the worst credible outcome across five lenses — <strong>people, money, reputation, delivery, legal/regulatory</strong> — and take the highest that applies. Financial thresholds are indicative and for SLT to calibrate. If you are torn between two levels, pick the higher and note why.</p>
+      <div class="rubric" id="rubricOverview"></div>
     </div>
 
     <div class="card prio-wrap">
@@ -379,6 +397,8 @@ window.onerror = function(msg, src, line){
         <th onclick="sortBy('cat')">Category / area <span class="arr" id="arr-cat"></span></th>
         <th onclick="sortBy('owner')">Owner <span class="arr" id="arr-owner"></span></th>
         <th onclick="sortBy('com')">Cttee <span class="arr" id="arr-com"></span></th>
+        <th onclick="sortBy('l')" title="Likelihood (1–5)">L <span class="arr" id="arr-l"></span></th>
+        <th onclick="sortBy('i')" title="Impact (1–5)">I <span class="arr" id="arr-i"></span></th>
         <th onclick="sortBy('score')">Score <span class="arr" id="arr-score"></span></th>
         <th>Appetite check</th>
         <th onclick="sortBy('updated')">Last amended <span class="arr" id="arr-updated"></span></th>
@@ -447,6 +467,12 @@ window.onerror = function(msg, src, line){
           <div class="score-big" id="mScore"><span class="v">–</span><span class="b"></span></div>
           <div class="appetite-cmp" id="mAppCmp"></div>
         </div>
+      </div>
+      <div class="fld full">
+        <details class="rubric-fold">
+          <summary>Scoring guide — what 1–5 means for likelihood and impact</summary>
+          <div class="rubric" id="rubricModal"></div>
+        </details>
       </div>
       <div class="fld full"><label>Key controls in place</label><textarea id="mControls" placeholder="One per line"></textarea></div>
       <div class="fld full"><label>Planned actions</label><textarea id="mActions" placeholder="One per line"></textarea></div>
@@ -652,6 +678,35 @@ function canEditArea(l2ref){
 }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
+/* ============ SCORING RUBRIC ============ */
+const RUBRIC = {
+  likelihood: [
+    [1,"Rare","Would only happen in exceptional circumstances — under ~5% chance in the next 12 months, and no warning signs today."],
+    [2,"Unlikely","Could happen at some point (~5–25%). It has happened in the sector, but our circumstances and controls make it improbable this year."],
+    [3,"Possible","Might genuinely happen (~25–50%). It has happened at TCF before, or early warning signs already exist."],
+    [4,"Likely","Will probably happen (~50–75%) within the next 12 months unless we act further."],
+    [5,"Almost certain","Expected to happen (over ~75%), possibly more than once — or it is already happening now."]
+  ],
+  impact: [
+    [1,"Minimal","No harm to people. Financial effect under ~£10k. Embarrassment internal only. Disruption absorbed within a team in days. No regulatory interest."],
+    [2,"Minor","Minor injury or distress, handled through normal support. ~£10k–£50k. Isolated external criticism. One activity disrupted for up to a week. Technical breach with no enforcement."],
+    [3,"Moderate","Harm to a person needing professional support. ~£50k–£250k, or a visible cut to programme spend. Sustained criticism in sector or local press. A key activity disrupted for weeks. An incident reportable to a regulator."],
+    [4,"Major","Serious harm to a Fellow, staff member or beneficiary. ~£250k–£1m, or a material cut to Fellowship awards. National media criticism with lasting donor and partner damage. Core operations disrupted for a month or more. Formal regulatory investigation."],
+    [5,"Critical","Death or life-changing harm. Over ~£1m, or a threat to solvency or the endowment. National scandal and lasting loss of public trust. TCF unable to operate for an extended period. Statutory intervention — the charity's future in question."]
+  ]
+};
+function lvlColor(n){ return ["#2E7D32","#7CA52E","#F2B705","#EF6C00","#C62828"][n-1]; }
+function renderRubric(containerId){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  el.innerHTML = ["likelihood","impact"].map(kind=>
+    `<h5>${kind==="likelihood"?"Likelihood — how probable in the next 12 months?":"Impact — how bad is the worst credible outcome?"}</h5>
+     <table><tbody>` + RUBRIC[kind].map(([n,name,desc])=>
+      `<tr><td style="width:34px"><span class="lvl" style="background:${lvlColor(n)}">${n}</span></td>
+       <td style="width:110px" class="lvl-name">${name}</td><td>${desc}</td></tr>`).join("") +
+    `</tbody></table>`).join("");
+}
+
 /* ============ CHANGE CONTROL ============ */
 const FIELDS = {title:"Title", desc:"Description", l2:"Taxonomy area", com:"Committee", l:"Likelihood", i:"Impact",
                 controls:"Controls", actions:"Actions", status:"Status", review:"Next review", draft:"Draft flag"};
@@ -844,12 +899,14 @@ function renderRegister(){
       <td><div style="font-weight:700;font-size:12.5px">${esc(a.cat.name)}</div><div class="risk-sub">${a.ref} ${esc(a.name)}</div></td>
       <td style="white-space:nowrap">${esc(a.cat.owner)}</td>
       <td style="white-space:nowrap"><span class="tag tag-app" title="${esc(COMMITTEES[r.com]||"")}">${esc(r.com||"–")}</span></td>
+      <td class="num-col" title="${RUBRIC.likelihood[r.l-1][1]}">${r.l}</td>
+      <td class="num-col" title="${RUBRIC.impact[r.i-1][1]}">${r.i}</td>
       <td><span class="pill" style="background:${bandHex(s)}" title="L${r.l} × I${r.i} · ${band(s)}">${s}</span></td>
       <td><span class="tag tag-app" style="background:${app.color};color:${app.fg}">${app.label}</span><br>${r.status==="Closed"?'<span class="risk-sub">closed</span>':outsideAppetite(r)?'<span class="breach-flag">▲ outside appetite</span>':'<span class="ok-flag">✓ within</span>'}</td>
       <td style="white-space:nowrap">${(r.updated||"").slice(0,10)||"–"}${overdue(r)?'<br><span class="breach-flag" title="Next review date has passed">review overdue</span>':""}</td>
       <td>${r.status==="Closed"?'<span class="pill pill-outline" style="color:var(--muted)">Closed</span>':r.status==="Monitoring"?'<span class="pill pill-outline" style="color:var(--high)">Monitoring</span>':'<span class="pill pill-outline" style="color:var(--red-dark)">Open</span>'}</td>
     </tr>`;
-  }).join("") || `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:28px">No risks match these filters.</td></tr>`;
+  }).join("") || `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:28px">No risks match these filters.</td></tr>`;
 }
 
 /* ---- taxonomy ---- */
@@ -1013,14 +1070,19 @@ function openModal(id){
   document.getElementById("overlay").classList.add("open");
 }
 function buildPickers(editable){
-  const mk = (el, get, set) => {
-    el.innerHTML = [1,2,3,4,5].map(n=>`<button type="button" ${editable?"":"disabled"} class="${get()===n?"sel":""}">${n}</button>`).join("");
+  const mk = (el, get, set, kind) => {
+    el.innerHTML = [1,2,3,4,5].map(n=>{
+      const [,name,desc] = RUBRIC[kind][n-1];
+      return `<button type="button" ${editable?"":"disabled"} class="${get()===n?"sel":""}" title="${name}: ${esc(desc)}">${n}</button>`;
+    }).join("");
     [...el.children].forEach((b,idx)=> b.onclick = ()=>{ if(!editable) return; set(idx+1); buildPickers(editable); refreshScoreUI(); });
   };
-  mk(document.getElementById("mLike"), ()=>pickL, v=>pickL=v);
-  mk(document.getElementById("mImp"), ()=>pickI, v=>pickI=v);
+  mk(document.getElementById("mLike"), ()=>pickL, v=>pickL=v, "likelihood");
+  mk(document.getElementById("mImp"), ()=>pickI, v=>pickI=v, "impact");
 }
 function refreshScoreUI(){
+  document.querySelector("#mLike").parentElement.querySelector("label").textContent = `Likelihood (1–5) — ${RUBRIC.likelihood[pickL-1][1]}`;
+  document.querySelector("#mImp").parentElement.querySelector("label").textContent = `Impact (1–5) — ${RUBRIC.impact[pickI-1][1]}`;
   const s = pickL*pickI;
   const sb = document.getElementById("mScore");
   sb.style.background = bandHex(s);
@@ -1190,6 +1252,8 @@ function populateFilters(){
 }
 function renderAll(){ renderDashboard(); renderRegister(); renderTaxonomy(); renderChanges(); }
 populateFilters();
+renderRubric("rubricOverview");
+renderRubric("rubricModal");
 document.getElementById("role").value = role;
 setRole(role);
 </script>

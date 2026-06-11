@@ -144,6 +144,22 @@
 
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:99px;font-weight:600;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:99;box-shadow:0 8px 30px rgba(0,0,0,.35)}
   .toast.show{opacity:1}
+  /* overview */
+  .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:10px}
+  .step{background:#faf8f7;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .step .num{width:26px;height:26px;border-radius:50%;background:var(--red);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px;margin-bottom:8px}
+  .step .cad{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--red-dark);background:#fdf3f2;border-radius:6px;padding:2px 7px;margin-bottom:7px}
+  .step h4{font-size:13.5px;margin-bottom:4px}
+  .step p{font-size:12px;color:var(--muted)}
+  .tag-ai{background:#ede7f6;color:#4527a0;vertical-align:2px}
+  .ai-note{font-size:12px;color:var(--muted);font-style:italic;margin-bottom:14px;max-width:980px}
+  .prio{border-left:4px solid var(--red);margin-bottom:12px}
+  .prio h4{font-size:14px;margin-bottom:6px}
+  .prio .why{font-size:12.5px;color:#444;margin-bottom:8px;max-width:980px}
+  .next li{font-size:12.5px;margin:5px 0 5px 18px}
+  .due{display:inline-block;background:#fdf3f2;color:var(--red-dark);font-weight:700;font-size:11px;border-radius:6px;padding:1px 7px;margin-left:6px;white-space:nowrap}
+  .rref{color:var(--red);font-weight:700;cursor:pointer;text-decoration:underline dotted}
+
   /* change report */
   .delta{font-weight:800;font-size:12px;white-space:nowrap}
   .delta.worse{color:var(--sev)}.delta.better{color:var(--low)}.delta.same{color:var(--muted);font-weight:600}
@@ -209,7 +225,8 @@ window.onerror = function(msg, src, line){
     </div>
   </div>
   <nav>
-    <button id="tab-dashboard" class="active" onclick="showView('dashboard')">Dashboard</button>
+    <button id="tab-overview" class="active" onclick="showView('overview')">Overview</button>
+    <button id="tab-dashboard" onclick="showView('dashboard')">Dashboard</button>
     <button id="tab-register" onclick="showView('register')">Risk register</button>
     <button id="tab-taxonomy" onclick="showView('taxonomy')">Taxonomy &amp; appetite</button>
     <button id="tab-changes" onclick="showView('changes');renderChanges()">Change report</button>
@@ -217,8 +234,87 @@ window.onerror = function(msg, src, line){
 </header>
 
 <main>
+  <!-- OVERVIEW -->
+  <section id="view-overview" class="view active">
+    <div class="card">
+      <h3>How our risk process works</h3>
+      <div class="steps">
+        <div class="step"><div class="num">1</div><span class="cad">Continuous</span>
+          <h4>Dynamic updates</h4>
+          <p>Risk owners update their risks whenever something changes — new risks, rescores, control updates. The register is live, not a quarterly snapshot.</p></div>
+        <div class="step"><div class="num">2</div><span class="cad">Quarterly</span>
+          <h4>SLT collective review</h4>
+          <p>The SLT reviews the full register together each quarter: scores, appetite breaches, overdue actions and anything new.</p></div>
+        <div class="step"><div class="num">3</div><span class="cad">Before each subcommittee</span>
+          <h4>Owner pre-review</h4>
+          <p>Ahead of each Board subcommittee meeting, the relevant SLT owners review and refresh the risks in their areas.</p></div>
+        <div class="step"><div class="num">4</div><span class="cad">Each subcommittee meeting</span>
+          <h4>Subcommittee scrutiny</h4>
+          <p>Each Board subcommittee reviews the risks relevant to its remit, using the register and the change report since it last met.</p></div>
+        <div class="step"><div class="num">5</div><span class="cad">Each Board meeting</span>
+          <h4>Full Board review</h4>
+          <p>The Board reviews the risk register in full at each meeting, with the change report showing what has moved and why.</p></div>
+      </div>
+    </div>
+
+    <div class="card prio-wrap">
+      <h3>Biggest organisational priorities — Q3 2026 (July–September) <span class="tag tag-ai">AI-drafted — for SLT to challenge</span></h3>
+      <p class="ai-note">This analysis was drafted by Claude (AI) from the register baseline of 10 June 2026 — particularly the risks sitting furthest outside draft appetite — and TCF's known plans (portal build, office move, Activate, the autumn risk-management overhaul). It is a static starting point for SLT discussion, not a live calculation: it does not update as the register changes, and the SLT should re-derive priorities at each quarterly review.</p>
+
+      <div class="card prio">
+        <h4>1 · Safety-critical assurance for Fellows</h4>
+        <p class="why">Fellow safety overseas (<span class="rref" onclick="openRisk('R07')">R07</span>, scoring 10) and safeguarding (<span class="rref" onclick="openRisk('R08')">R08</span>, 10) sit at two-and-a-half times their Averse tolerance (≤4) — the largest proportional breaches on the register — with peak Fellowship travel ahead. These are the risks the deck itself says are always managed with full aversion.</p>
+        <ul class="next">
+          <li>Run the live test of the overseas emergency response protocol <span class="due">by 31 Jul · Nikesh</span></li>
+          <li>Complete the safeguarding audit and book refresher training <span class="due">by 31 Jul · Nikesh</span></li>
+          <li>Report both to the quarterly SLT review with rescored risks <span class="due">Sep SLT · Nikesh</span></li>
+        </ul>
+      </div>
+
+      <div class="card prio">
+        <h4>2 · Cyber and data resilience before the portal lands</h4>
+        <p class="why">Cyber (<span class="rref" onclick="openRisk('R36')">R36</span>, 12) and data protection (<span class="rref" onclick="openRisk('R38')">R38</span>, 8) are outside Averse appetite at exactly the moment the portal (<span class="rref" onclick="openRisk('R32')">R32</span>, 12) is about to widen the attack surface and the volume of personal data processed.</p>
+        <ul class="next">
+          <li>Test incident response and a full restore from backup <span class="due">by 31 Jul · Jim</span></li>
+          <li>Complete DPIAs for the portal and AI tools before go-live <span class="due">by 31 Aug · Jim</span></li>
+          <li>Set portal adoption targets and the post-launch support model <span class="due">by 31 Aug · Jim</span></li>
+        </ul>
+      </div>
+
+      <div class="card prio">
+        <h4>3 · Protect team capacity through the change peak</h4>
+        <p class="why">Change fatigue (<span class="rref" onclick="openRisk('R29')">R29</span>, 12 against ≤9) is the People &amp; Culture risk most outside appetite, and Q3 stacks the office move (<span class="rref" onclick="openRisk('R33')">R33</span>), portal delivery and the start of the autumn risk overhaul on the same team. Capacity is the constraint that makes every other priority deliverable.</p>
+        <ul class="next">
+          <li>Capacity-check and sequence the autumn change calendar at SLT before committing <span class="due">by 15 Sep · Jim &amp; Julia</span></li>
+          <li>Confirm office-move continuity arrangements for the move window <span class="due">by 31 Aug · Jim</span></li>
+          <li>Run the stress risk assessment for the move/portal window <span class="due">by 30 Sep · Julia</span></li>
+        </ul>
+      </div>
+
+      <div class="card prio">
+        <h4>4 · Income resilience and compliance hygiene</h4>
+        <p class="why">Income concentration (<span class="rref" onclick="openRisk('R17')">R17</span>, 12 against ≤9) is the biggest financial exposure, while donor due diligence (<span class="rref" onclick="openRisk('R18')">R18</span>, 8) and Charity Commission compliance (<span class="rref" onclick="openRisk('R03')">R03</span>, 8) both sit at double their Averse tolerance — cheap to fix, expensive to ignore.</p>
+        <ul class="next">
+          <li>Agree income concentration limits and diversification targets <span class="due">by 30 Sep · Chris</span></li>
+          <li>Refresh due diligence thresholds for major gifts <span class="due">by 31 Aug · Chris</span></li>
+          <li>Run the governance compliance health-check <span class="due">by 31 Aug · Julia</span></li>
+        </ul>
+      </div>
+
+      <div class="card prio">
+        <h4>5 · Land the new risk framework itself</h4>
+        <p class="why">Everything above depends on this register being owned and trusted. All 41 starter risks are still draft placeholders, and the taxonomy and draft appetite are due to go to ARG and the Board ahead of the autumn overhaul.</p>
+        <ul class="next">
+          <li>Each owner confirms, rescores or replaces the draft risks in their areas <span class="due">by 31 Jul · all SLT</span></li>
+          <li>Taxonomy and draft appetite to ARG and Board for feedback <span class="due">Sep cycle · Julia</span></li>
+          <li>Run the first full quarterly SLT review using the change report <span class="due">by 30 Sep · Julia</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <!-- DASHBOARD -->
-  <section id="view-dashboard" class="view active">
+  <section id="view-dashboard" class="view">
     <div class="kpis" id="kpis"></div>
     <div class="dash-grid">
       <div>
@@ -912,6 +1008,10 @@ function refreshScoreUI(){
   else { cmp.className = "appetite-cmp good"; cmp.innerHTML = `✓ Within appetite<br><span style="font-weight:500">${app.label} tolerates ≤ ${app.max}</span>`; }
 }
 function closeModal(){ document.getElementById("overlay").classList.remove("open"); }
+function openRisk(id){
+  if(risks.some(r=>r.id===id)) openModal(id);
+  else toast(id + " is not on this copy of the register (it may have been edited or removed).");
+}
 function nextId(){
   let n = 0;
   risks.concat(deletedRisks).forEach(r=>{ const m = /^R(\d+)$/.exec(r.id); if(m) n = Math.max(n, +m[1]); });

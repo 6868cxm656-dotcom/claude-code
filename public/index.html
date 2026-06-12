@@ -183,6 +183,21 @@
   .chg-controls .filters{margin-bottom:6px}
   .chg-controls label{font-size:12.5px;font-weight:700;color:var(--muted)}
 
+  /* flags + pack + settings */
+  .tag-flag{background:#fdecea;color:#A81B12}
+  .flag-info{font-size:12px;color:var(--sev);font-weight:600;max-width:300px}
+  .set-row{display:grid;grid-template-columns:90px 1fr;gap:8px;align-items:center;margin-bottom:6px}
+  .set-row label{margin:0!important;text-transform:none!important;letter-spacing:0!important;font-size:12.5px!important}
+  .pack-h{border-left:5px solid var(--red);padding:14px 18px}
+  .pack-h h2{font-size:19px;letter-spacing:-.02em}
+  .pack-h .meta{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .hot-box{border:1px solid var(--line);border-left:4px solid var(--sev);border-radius:10px;padding:12px 14px;margin-bottom:10px;break-inside:avoid}
+  .hot-box h4{font-size:13.5px;margin-bottom:4px}
+  .hot-box .h-meta{font-size:11.5px;color:var(--muted);margin-bottom:6px}
+  .hot-box ul{margin:4px 0 4px 18px;font-size:12px}
+  .hot-box .h-lbl{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:6px}
+  .pack-table td,.pack-table th{font-size:12px;padding:8px 10px}
+
   footer{max-width:1500px;margin:0 auto;padding:0 28px 36px;color:var(--muted);font-size:12px}
   @media print{
     header .head-controls,nav,.filters,.no-print,#addBtn,footer,.overlay{display:none!important}
@@ -219,16 +234,17 @@ window.onerror = function(msg, src, line){
       <div class="sub">TCF Risk Taxonomy v3 · incorporates the legacy register (consolidated June 2026) · 5×5 residual scoring · appetite-aware</div>
     </div>
     <div class="head-controls">
-      <label for="role">I am</label>
+      <span id="whoami" style="display:none;font-size:12.5px;font-weight:700"></span>
+      <label for="role" id="roleLabel">I am</label>
       <select id="role" onchange="setRole(this.value)">
         <option value="viewer">Viewer (read-only)</option>
-        <option value="lead">Risk lead (edit all)</option>
-        <option value="Julia">Julia (CEO)</option>
+        <option value="Julia">Julia (CEO) — all areas</option>
+        <option value="Jim">Jim (COO) — all areas</option>
         <option value="Nikesh">Nikesh (Fellowship)</option>
         <option value="Jacqui">Jacqui (Engagement)</option>
         <option value="Chris">Chris (Development)</option>
-        <option value="Jim">Jim (COO)</option>
       </select>
+      <button class="btn-ghost" id="settingsBtn" style="display:none" onclick="openSettings()">⚙ Meetings &amp; contacts</button>
       <button class="btn-ghost" onclick="exportJSON(false)">Export all (JSON)</button>
       <button class="btn-ghost" id="exportMineBtn" onclick="exportJSON(true)" style="display:none">Export my areas</button>
       <button class="btn-ghost" onclick="document.getElementById('importFile').click()">Import / merge</button>
@@ -242,6 +258,7 @@ window.onerror = function(msg, src, line){
     <button id="tab-register" onclick="showView('register')">Risk register</button>
     <button id="tab-taxonomy" onclick="showView('taxonomy')">Taxonomy &amp; appetite</button>
     <button id="tab-changes" onclick="showView('changes');renderChanges()">Change report</button>
+    <button id="tab-pack" onclick="showView('pack');renderPack()">Committee pack</button>
   </nav>
 </header>
 
@@ -384,6 +401,7 @@ window.onerror = function(msg, src, line){
           <option value="">All statuses</option><option>Open</option><option>Monitoring</option><option>Closed</option>
         </select>
         <span class="toggle" id="fBreach" onclick="this.classList.toggle('on');renderRegister()">⚠ Outside appetite</span>
+        <span class="toggle" id="fFlag" onclick="this.classList.toggle('on');renderRegister()">🚩 Flagged</span>
         <span class="toggle" id="fOverdue" onclick="this.classList.toggle('on');renderRegister()">⏰ Review overdue</span>
         <button class="btn-soft" onclick="clearFilters()">Clear</button>
       </div>
@@ -439,6 +457,22 @@ window.onerror = function(msg, src, line){
     </div>
     <p class="floor-note">Built from the edit history saved with each risk: every save records who changed what, and the register is reconstructed as it stood at each date. History travels with exports, so merged files keep their audit trail.</p>
   </section>
+
+  <!-- COMMITTEE PACK -->
+  <section id="view-pack" class="view">
+    <div class="card no-print">
+      <h3>Committee pack <span class="hint">a printable snapshot for a Board or subcommittee meeting</span></h3>
+      <div class="filters">
+        <label for="pCom">Pack for</label>
+        <select id="pCom" onchange="renderPack()"></select>
+        <label for="pSince">changes since</label>
+        <input type="date" id="pSince" onchange="renderPack(true)">
+        <button class="btn-primary" onclick="window.print()">🖨 Print / save as PDF</button>
+      </div>
+      <div class="count-note">"Changes since" defaults to this committee's last recorded meeting date (set under ⚙ Meetings &amp; contacts). The Board pack covers every risk; subcommittee packs cover the risks allocated to that committee.</div>
+    </div>
+    <div id="packBody"></div>
+  </section>
 </main>
 
 <footer>
@@ -483,11 +517,38 @@ window.onerror = function(msg, src, line){
       <div class="fld full" id="mHistoryWrap"><label>Change history</label><div id="mHistory" class="hist"></div></div>
     </div>
     <div class="modal-f">
-      <div><button class="btn-danger" id="mDelete" onclick="deleteRisk()">Delete risk</button></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn-danger" id="mDelete" onclick="deleteRisk()">Delete risk</button>
+        <button class="btn-soft" id="mFlag" onclick="flagRisk()">🚩 Request review</button>
+        <button class="btn-soft" id="mClearFlag" onclick="clearFlag()">Clear flag</button>
+        <span class="flag-info" id="mFlagInfo" style="display:none"></span>
+      </div>
       <div class="right">
         <span class="readonly-note" id="mReadonly" style="display:none"></span>
         <button class="btn-soft" onclick="closeModal()">Cancel</button>
         <button class="btn-primary" id="mSave" onclick="saveRisk()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div class="overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettings()">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-h">
+      <div><h2>Meetings &amp; contacts</h2>
+      <div class="risk-sub">Used for "changes since last meeting" in committee packs, and to address review-request emails. Saved in this browser and included in exports.</div></div>
+      <button class="btn-soft" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="modal-b">
+      <div class="fld full"><label>Last meeting date per committee</label><div id="setMeetings"></div></div>
+      <div class="fld full"><label>SLT email addresses (for review-request emails)</label><div id="setEmails"></div></div>
+    </div>
+    <div class="modal-f">
+      <div></div>
+      <div class="right">
+        <button class="btn-soft" onclick="closeSettings()">Cancel</button>
+        <button class="btn-primary" onclick="saveSettings()">Save</button>
       </div>
     </div>
   </div>
@@ -620,10 +681,20 @@ const store = {
   get(k){ try{ return window.localStorage.getItem(k); }catch(e){ return null; } },
   set(k,v){ try{ window.localStorage.setItem(k,v); }catch(e){} }
 };
+const PEOPLE = ["Julia","Jim","Nikesh","Jacqui","Chris"];
+const ADMINS = ["Jim","Julia"];                       // access-all-areas
+const DEFAULT_SETTINGS = {
+  emails: {Jim:"jim.riddiford@churchillfellowship.org", Julia:"", Nikesh:"", Jacqui:"", Chris:""},
+  meetings: {Board:"", PFC:"", ARGC:"", IC:"", RNC:""},
+  updated: "2026-06-12T00:00:00Z"
+};
 const loaded = loadState();
 let risks = loaded.risks;
 let deletedRisks = loaded.deleted;
+let settings = loaded.settings;
 let role = store.get(LS_KEY+"-role") || "viewer";
+if(role==="lead") role = "viewer";                    // legacy role removed
+let identityEmail = null;                              // set when served behind Cloudflare Access
 let sortKey = "score", sortDir = -1;
 let editingId = null, pickL = 3, pickI = 3;
 
@@ -643,18 +714,27 @@ function migrate(list){
   });
   return list||[];
 }
+function mergeSettings(s){
+  const base = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  if(s && typeof s==="object"){
+    Object.assign(base.emails, s.emails||{});
+    Object.assign(base.meetings, s.meetings||{});
+    if(s.updated) base.updated = s.updated;
+  }
+  return base;
+}
 function loadState(){
   try{
     const raw = store.get(LS_KEY);
     if(raw){
       const d = JSON.parse(raw);
-      if(Array.isArray(d) && d.length) return {risks:migrate(d), deleted:[]};            // pre-change-control format
-      if(d && Array.isArray(d.risks) && d.risks.length) return {risks:migrate(d.risks), deleted:migrate(d.deleted)};
+      if(Array.isArray(d) && d.length) return {risks:migrate(d), deleted:[], settings:mergeSettings(null)};
+      if(d && Array.isArray(d.risks) && d.risks.length) return {risks:migrate(d.risks), deleted:migrate(d.deleted), settings:mergeSettings(d.settings)};
     }
   }catch(e){}
-  return {risks: JSON.parse(JSON.stringify(BASELINE_RISKS)), deleted: []};
+  return {risks: JSON.parse(JSON.stringify(BASELINE_RISKS)), deleted: [], settings: mergeSettings(null)};
 }
-function persist(){ store.set(LS_KEY, JSON.stringify({risks, deleted: deletedRisks})); }
+function persist(){ store.set(LS_KEY, JSON.stringify({risks, deleted: deletedRisks, settings})); }
 
 /* ============ HELPERS ============ */
 function score(r){ return r.l * r.i; }
@@ -666,16 +746,48 @@ function appetite(r){ return APPETITES[area(r).app]; }
 function outsideAppetite(r){ return r.status!=="Closed" && score(r) > appetite(r).max; }
 function overdue(r){ return r.status!=="Closed" && r.review && r.review < TODAY; }
 function ownerFirst(owner){ return owner.split(" ")[0]; }
+function isAdmin(){ return ADMINS.includes(role); }
 function canEdit(r){
-  if(role==="lead") return true;
   if(role==="viewer") return false;
+  if(isAdmin()) return true;
   return ownerFirst(area(r).cat.owner) === role;
 }
 function canEditArea(l2ref){
-  if(role==="lead") return true;
   if(role==="viewer") return false;
+  if(isAdmin()) return true;
   return ownerFirst(AREA_MAP[l2ref].cat.owner) === role;
 }
+
+/* ============ IDENTITY (Cloudflare Access) ============ */
+/* When served behind Cloudflare Access, the signed-in email is available at this
+   endpoint; permissions are then assigned automatically and the role picker locks.
+   On a local file copy the fetch fails silently and the manual picker remains. */
+function applyIdentity(email){
+  identityEmail = email;
+  const local = String(email).split("@")[0].toLowerCase();
+  const person = PEOPLE.find(p=>{
+    const n = p.toLowerCase();
+    return local===n || local.startsWith(n+".") || local.startsWith(n+"-") || local.startsWith(n+"_");
+  });
+  role = person || "viewer";
+  const sel = document.getElementById("role");
+  sel.style.display = "none";
+  document.getElementById("roleLabel").style.display = "none";
+  const who = document.getElementById("whoami");
+  who.style.display = "";
+  who.textContent = person
+    ? `Signed in as ${person}${ADMINS.includes(person)?" · all areas":" · edits own areas"}`
+    : `Signed in as ${email} · view only`;
+  setRole(role, true);
+}
+try{
+  if(window.fetch && location.protocol.startsWith("http")){
+    fetch("/cdn-cgi/access/get-identity", {credentials:"include"})
+      .then(r=> r.ok ? r.json() : null)
+      .then(d=>{ if(d && d.email) applyIdentity(d.email); })
+      .catch(()=>{});
+  }
+}catch(e){}
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 /* ============ SCORING RUBRIC ============ */
@@ -709,7 +821,7 @@ function renderRubric(containerId){
 
 /* ============ CHANGE CONTROL ============ */
 const FIELDS = {title:"Title", desc:"Description", l2:"Taxonomy area", com:"Committee", l:"Likelihood", i:"Impact",
-                controls:"Controls", actions:"Actions", status:"Status", review:"Next review", draft:"Draft flag"};
+                controls:"Controls", actions:"Actions", status:"Status", review:"Next review", draft:"Draft flag", flag:"Review flag"};
 function sameVal(a,b){ return JSON.stringify(a===undefined?null:a) === JSON.stringify(b===undefined?null:b); }
 function diffRisk(prev, next){
   const changes = [];
@@ -742,6 +854,7 @@ function describeChange(ch){
   if(ch.f==="controls" || ch.f==="actions" || ch.f==="desc" || ch.f==="title") return f + " updated";
   if(ch.f==="l2") return "Moved " + esc(ch.from) + " → " + esc(ch.to);
   if(ch.f==="draft") return ch.to ? "Marked as draft" : "Confirmed (draft flag removed)";
+  if(ch.f==="flag") return ch.to ? "Review requested" + (ch.to.note? " — "+esc(ch.to.note):"") : "Review flag cleared";
   return f + " " + esc(String(ch.from)) + " → " + esc(String(ch.to));
 }
 function toast(msg){
@@ -751,11 +864,12 @@ function toast(msg){
 }
 
 /* ============ ROLE ============ */
-function setRole(v){
+function setRole(v, fromIdentity){
   role = v;
-  store.set(LS_KEY+"-role", v);
-  document.getElementById("exportMineBtn").style.display = (v!=="viewer" && v!=="lead") ? "" : "none";
+  if(!fromIdentity) store.set(LS_KEY+"-role", v);
+  document.getElementById("exportMineBtn").style.display = (v!=="viewer" && !isAdmin()) ? "" : "none";
   document.getElementById("addBtn").style.display = (v==="viewer") ? "none" : "";
+  document.getElementById("settingsBtn").style.display = isAdmin() ? "" : "none";
   renderAll();
 }
 
@@ -773,10 +887,12 @@ function renderDashboard(){
   const breaches = open.filter(outsideAppetite);
   const severe = open.filter(r=>score(r)>=16);
   const od = open.filter(overdue);
+  const flagged = risks.filter(r=>r.flag);
   const kp = document.getElementById("kpis");
   kp.innerHTML = `
     <div class="kpi neutral" onclick="goRegister({})"><div class="n">${risks.length}</div><div class="t">Risks on register</div></div>
     <div class="kpi alert" onclick="goRegister({breach:true})"><div class="n">${breaches.length}</div><div class="t">Outside draft appetite</div></div>
+    <div class="kpi alert" onclick="goRegister({flagged:true})"><div class="n">${flagged.length}</div><div class="t">🚩 Flagged for review</div></div>
     <div class="kpi warn" onclick="goRegister({minScore:16})"><div class="n">${severe.length}</div><div class="t">Severe (16–25)</div></div>
     <div class="kpi warn" onclick="goRegister({overdue:true})"><div class="n">${od.length}</div><div class="t">Reviews overdue</div></div>
     <div class="kpi ok"><div class="n">${risks.filter(r=>r.draft).length}</div><div class="t">Draft placeholders to confirm</div></div>`;
@@ -817,7 +933,7 @@ function riskRowMini(r){
   const a = area(r);
   return `<div class="item" onclick="openModal('${r.id}')">
     <div class="score" style="background:${bandHex(score(r))}">${score(r)}</div>
-    <div><div class="ti">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}</div>
+    <div><div class="ti">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.flag?'<span class="tag tag-flag">🚩 review</span>':""}</div>
     <div class="meta">${esc(a.cat.name)} · ${esc(a.name)} · ${esc(r.com||"")} · appetite: ${appetite(r).label}${outsideAppetite(r)?' · <span class="breach-flag">outside appetite</span>':""}</div></div></div>`;
 }
 
@@ -827,6 +943,7 @@ function goRegister(opts){
   clearFilters(true);
   if(opts.cat) document.getElementById("fCat").value = opts.cat;
   if(opts.breach) document.getElementById("fBreach").classList.add("on");
+  if(opts.flagged) document.getElementById("fFlag").classList.add("on");
   if(opts.overdue) document.getElementById("fOverdue").classList.add("on");
   if(opts.cell) cellFilter = opts.cell;
   if(opts.minScore) minScoreFilter = opts.minScore;
@@ -837,6 +954,7 @@ function clearFilters(noRender){
   document.getElementById("fSearch").value="";
   ["fCat","fOwner","fApp","fCom","fStatus"].forEach(id=>document.getElementById(id).value="");
   document.getElementById("fBreach").classList.remove("on");
+  document.getElementById("fFlag").classList.remove("on");
   document.getElementById("fOverdue").classList.remove("on");
   cellFilter = null; minScoreFilter = null;
   if(!noRender) renderRegister();
@@ -863,6 +981,7 @@ function renderRegister(){
   const fcom = document.getElementById("fCom").value;
   const fs = document.getElementById("fStatus").value;
   const fb = document.getElementById("fBreach").classList.contains("on");
+  const ffl = document.getElementById("fFlag").classList.contains("on");
   const fod = document.getElementById("fOverdue").classList.contains("on");
 
   let list = risks.filter(r=>{
@@ -873,6 +992,7 @@ function renderRegister(){
     if(fcom && r.com!==fcom) return false;
     if(fs && r.status!==fs) return false;
     if(fb && !outsideAppetite(r)) return false;
+    if(ffl && !r.flag) return false;
     if(fod && !overdue(r)) return false;
     if(cellFilter && (r.l!==cellFilter[0] || r.i!==cellFilter[1])) return false;
     if(minScoreFilter && score(r)<minScoreFilter) return false;
@@ -895,7 +1015,7 @@ function renderRegister(){
     const lock = canEdit(r) ? "" : ` <span class="lockicon" title="Read-only for your role">🔒</span>`;
     return `<tr onclick="openModal('${r.id}')">
       <td style="font-weight:700;color:var(--muted)">${r.id}</td>
-      <td><div class="risk-title">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${lock}</div><div class="risk-sub">${esc(r.desc).slice(0,110)}${r.desc.length>110?"…":""}</div></td>
+      <td><div class="risk-title">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.flag?`<span class="tag tag-flag" title="Review requested by ${esc(r.flag.by)}${r.flag.note? ": "+esc(r.flag.note):""}">🚩 review</span>`:""}${lock}</div><div class="risk-sub">${esc(r.desc).slice(0,110)}${r.desc.length>110?"…":""}</div></td>
       <td><div style="font-weight:700;font-size:12.5px">${esc(a.cat.name)}</div><div class="risk-sub">${a.ref} ${esc(a.name)}</div></td>
       <td style="white-space:nowrap">${esc(a.cat.owner)}</td>
       <td style="white-space:nowrap"><span class="tag tag-app" title="${esc(COMMITTEES[r.com]||"")}">${esc(r.com||"–")}</span></td>
@@ -1052,6 +1172,13 @@ function openModal(id){
     document.getElementById(fid).disabled = !editable);
   document.getElementById("mSave").style.display = editable? "" : "none";
   document.getElementById("mDelete").style.display = (editable && !isNew)? "" : "none";
+  document.getElementById("mFlag").style.display = (!isNew && role!=="viewer" && !(r&&r.flag))? "" : "none";
+  document.getElementById("mClearFlag").style.display = (r && r.flag && (canEdit(r) || r.flag.by===role))? "" : "none";
+  const fi = document.getElementById("mFlagInfo");
+  if(r && r.flag){
+    fi.style.display = "";
+    fi.textContent = `🚩 Review requested by ${r.flag.by} on ${(r.flag.at||"").slice(0,10)}${r.flag.note? ": "+r.flag.note : ""}`;
+  } else fi.style.display = "none";
   const ro = document.getElementById("mReadonly");
   ro.style.display = editable? "none" : "";
   ro.textContent = role==="viewer" ? "Read-only — choose your name under “I am” to edit your areas."
@@ -1095,6 +1222,43 @@ function refreshScoreUI(){
   else { cmp.className = "appetite-cmp good"; cmp.innerHTML = `✓ Within appetite<br><span style="font-weight:500">${app.label} tolerates ≤ ${app.max}</span>`; }
 }
 function closeModal(){ document.getElementById("overlay").classList.remove("open"); }
+
+/* ---- review flags ---- */
+function recordRiskChange(r, changes){
+  r.updated = new Date().toISOString();
+  r.history = (r.history||[]).concat([{at:r.updated, by:role, changes}]);
+}
+function flagRisk(){
+  const r = risks.find(x=>x.id===editingId);
+  if(!r || role==="viewer") return;
+  const raw = prompt("Why does this risk need review? (sent to the owner)");
+  if(raw===null) return;
+  const note = raw.trim();
+  const flag = {by:role, at:new Date().toISOString(), note};
+  recordRiskChange(r, [{f:"flag", from:r.flag||null, to:flag}]);
+  r.flag = flag;
+  persist(); renderAll(); closeModal();
+  // open a pre-addressed email to the owner
+  const ownerName = ownerFirst(area(r).cat.owner);
+  const to = (settings.emails[ownerName]||"").trim();
+  const subject = encodeURIComponent(`[TCF Risk Register] Review requested: ${r.id} — ${r.title}`);
+  const body = encodeURIComponent(
+    `Hi ${ownerName},\n\n${role} has flagged a risk for your review.\n\n`+
+    `${r.id} — ${r.title}\nArea: ${area(r).cat.name} · ${area(r).name}\n`+
+    `Current residual score: ${score(r)} (L${r.l} × I${r.i})\n\nNote: ${note||"(none)"}\n\n`+
+    `Open the register: ${location.origin && location.origin!=="null" ? location.href.split("#")[0] : "(shared register link)"}\n`);
+  window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+  toast(to ? `Flagged — email to ${ownerName} opened.` : `Flagged. No email saved for ${ownerName} — add it under ⚙ Meetings & contacts.`);
+}
+function clearFlag(){
+  const r = risks.find(x=>x.id===editingId);
+  if(!r || !r.flag) return;
+  if(!canEdit(r) && r.flag.by!==role){ toast("Only the owner, an admin, or the flagger can clear a flag."); return; }
+  recordRiskChange(r, [{f:"flag", from:r.flag, to:null}]);
+  r.flag = null;
+  persist(); renderAll(); closeModal(); toast("Flag cleared.");
+}
+
 function openRisk(id){
   if(risks.some(r=>r.id===id)) openModal(id);
   else toast(id + " is not on this copy of the register (it may have been edited or removed).");
@@ -1107,12 +1271,14 @@ function nextId(){
 function saveRisk(){
   const title = document.getElementById("mRiskTitle").value.trim();
   if(!title){ toast("Give the risk a title."); return; }
+  const prevRisk = editingId ? risks.find(r=>r.id===editingId) : null;
   const obj = {
     id: editingId || nextId(),
     title,
     desc: document.getElementById("mDesc").value.trim(),
     l2: document.getElementById("mArea").value,
     com: document.getElementById("mCom").value,
+    flag: (prevRisk && prevRisk.flag) || null,
     l: pickL, i: pickI,
     controls: document.getElementById("mControls").value.split("\n").map(s=>s.trim()).filter(Boolean),
     actions: document.getElementById("mActions").value.split("\n").map(s=>s.trim()).filter(Boolean),
@@ -1147,6 +1313,112 @@ function deleteRisk(){
   persist(); closeModal(); renderAll(); toast("Risk deleted.");
 }
 
+/* ============ SETTINGS (meetings & contacts) ============ */
+function openSettings(){
+  document.getElementById("setMeetings").innerHTML = Object.keys(COMMITTEES).map(c=>
+    `<div class="set-row"><label title="${COMMITTEES[c]}">${c}</label><input type="date" id="setM-${c}" value="${esc(settings.meetings[c]||"")}"></div>`).join("");
+  document.getElementById("setEmails").innerHTML = PEOPLE.map(p=>
+    `<div class="set-row"><label>${p}</label><input type="email" id="setE-${p}" placeholder="name@churchillfellowship.org" value="${esc(settings.emails[p]||"")}"></div>`).join("");
+  document.getElementById("settingsOverlay").classList.add("open");
+}
+function closeSettings(){ document.getElementById("settingsOverlay").classList.remove("open"); }
+function saveSettings(){
+  Object.keys(COMMITTEES).forEach(c=>{ settings.meetings[c] = document.getElementById("setM-"+c).value || ""; });
+  PEOPLE.forEach(p=>{ settings.emails[p] = document.getElementById("setE-"+p).value.trim(); });
+  settings.updated = new Date().toISOString();
+  persist(); closeSettings(); toast("Settings saved.");
+}
+
+/* ============ COMMITTEE PACK ============ */
+function packScope(com){ return com==="Board" ? risks.slice() : risks.filter(r=>r.com===com); }
+function renderPack(keepSince){
+  const sel = document.getElementById("pCom");
+  if(!sel.options.length) sel.innerHTML = Object.keys(COMMITTEES).map(c=>`<option value="${c}">${c} — ${COMMITTEES[c]}</option>`).join("");
+  const com = sel.value || "Board";
+  const sinceEl = document.getElementById("pSince");
+  if(!keepSince) sinceEl.value = settings.meetings[com] || "";
+  const since = sinceEl.value;
+  const scope = packScope(com).filter(r=>r.status!=="Closed").sort((a,b)=>score(b)-score(a));
+  const ids = new Set(scope.map(r=>r.id));
+  const breaches = scope.filter(outsideAppetite);
+  const flagged = scope.filter(r=>r.flag);
+  const severe = scope.filter(r=>score(r)>=16);
+  const avg = scope.length? Math.round(scope.reduce((t,r)=>t+score(r),0)/scope.length*10)/10 : 0;
+
+  let html = `
+  <div class="card pack-h">
+    <h2>TCF Risk Register — ${com==="Board"?"Full Board":COMMITTEES[com]} pack</h2>
+    <div class="meta">Generated ${TODAY} · ${scope.length} open risk${scope.length===1?"":"s"} in scope${since? ` · changes shown since ${since} (last recorded ${com} meeting)` : " · no last-meeting date recorded — set one under ⚙ Meetings & contacts"} · DRAFT scores marked for owner confirmation</div>
+  </div>
+  <div class="kpis">
+    <div class="kpi neutral"><div class="n">${scope.length}</div><div class="t">Open risks in scope</div></div>
+    <div class="kpi alert"><div class="n">${breaches.length}</div><div class="t">Outside draft appetite</div></div>
+    <div class="kpi alert"><div class="n">${flagged.length}</div><div class="t">🚩 Flagged for review</div></div>
+    <div class="kpi warn"><div class="n">${severe.length}</div><div class="t">Severe (16–25)</div></div>
+    <div class="kpi ok"><div class="n">${avg}</div><div class="t">Average residual score</div></div>
+  </div>`;
+
+  // register table
+  html += `<div class="card"><h3>Risk register${com==="Board"?"":" — "+com}</h3>
+    <table class="pack-table"><thead><tr><th>Ref</th><th>Risk</th><th>Owner</th>${com==="Board"?"<th>Cttee</th>":""}<th>L</th><th>I</th><th>Score</th><th>Appetite</th><th>Last amended</th></tr></thead><tbody>`+
+    scope.map(r=>{
+      const a = area(r), s = score(r);
+      return `<tr><td style="font-weight:700;color:var(--muted)">${r.id}</td>
+        <td><div class="risk-title">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.flag?'<span class="tag tag-flag">🚩</span>':""}</div><div class="risk-sub">${a.ref} ${esc(a.name)}</div></td>
+        <td style="white-space:nowrap">${esc(a.cat.owner)}</td>${com==="Board"?`<td>${esc(r.com)}</td>`:""}
+        <td class="num-col">${r.l}</td><td class="num-col">${r.i}</td>
+        <td><span class="pill" style="background:${bandHex(s)}">${s}</span></td>
+        <td>${outsideAppetite(r)?'<span class="breach-flag">▲ outside</span>':'<span class="ok-flag">✓ within</span>'} <span class="risk-sub">${appetite(r).label}</span></td>
+        <td style="white-space:nowrap">${(r.updated||"").slice(0,10)}</td></tr>`;
+    }).join("") + `</tbody></table></div>`;
+
+  // hot risk detail: flagged or outside appetite
+  const hot = scope.filter(r=>r.flag || outsideAppetite(r));
+  if(hot.length){
+    html += `<div class="card"><h3>Risks needing attention <span class="hint">flagged for review or outside draft appetite</span></h3>`+
+      hot.map(r=>{
+        const a = area(r);
+        return `<div class="hot-box"><h4>${r.id} — ${esc(r.title)} <span class="pill" style="background:${bandHex(score(r))}">${score(r)}</span></h4>
+        <div class="h-meta">${esc(a.cat.name)} · ${a.ref} ${esc(a.name)} · ${esc(a.cat.owner)} · ${appetite(r).label}${outsideAppetite(r)?' · <span class="breach-flag">outside appetite</span>':""}</div>
+        ${r.flag?`<div class="h-meta" style="color:var(--sev);font-weight:700">🚩 Review requested by ${esc(r.flag.by)} on ${(r.flag.at||"").slice(0,10)}${r.flag.note? ": "+esc(r.flag.note):""}</div>`:""}
+        <div style="font-size:12.5px">${esc(r.desc)}</div>
+        ${(r.controls||[]).length?`<div class="h-lbl">Controls in place</div><ul>${r.controls.map(c=>`<li>${esc(c)}</li>`).join("")}</ul>`:""}
+        ${(r.actions||[]).length?`<div class="h-lbl">Planned actions</div><ul>${r.actions.map(c=>`<li>${esc(c)}</li>`).join("")}</ul>`:""}
+        </div>`;
+      }).join("") + `</div>`;
+  }
+
+  // change log since last meeting
+  if(since){
+    const sa = stateAt(since), sb = stateAt(TODAY);
+    const changedRows = [];
+    Object.keys(sb).forEach(id=>{
+      if(!sa[id] || !ids.has(id)) return;
+      const live = risks.find(r=>r.id===id);
+      if(!live) return;
+      const entries = entriesBetween(live, since, TODAY).filter(h=>h.changes);
+      if(!entries.length) return;
+      changedRows.push({a:sa[id], b:sb[id], entries});
+    });
+    changedRows.sort((x,y)=> Math.abs(score(y.b)-score(y.a)) - Math.abs(score(x.b)-score(x.a)));
+    const news = Object.values(sb).filter(r=>!sa[r.id] && (com==="Board" || r.com===com));
+    const removed = Object.values(sa).filter(r=>!sb[r.id] && (com==="Board" || r.com===com));
+    html += `<div class="card"><h3>Changes since ${since}</h3>`;
+    html += changedRows.length ? `<table class="pack-table"><thead><tr><th>Ref</th><th>Risk</th><th>Score</th><th>What changed</th><th>By</th></tr></thead><tbody>`+
+      changedRows.map(c=>`<tr><td style="font-weight:700;color:var(--muted)">${c.b.id}</td>
+        <td>${esc(c.b.title)}</td>
+        <td style="white-space:nowrap">${chgScoreCell(score(c.a), score(c.b))}</td>
+        <td style="font-size:12px">${[...new Set(c.entries.flatMap(h=>h.changes.map(describeChange)))].join("; ")}</td>
+        <td style="font-size:12px;white-space:nowrap">${esc([...new Set(c.entries.map(h=>h.by||"?"))].join(", "))}</td></tr>`).join("")+`</tbody></table>`
+      : `<div class="none-msg">No edits to in-scope risks since ${since}.</div>`;
+    if(news.length) html += `<h3 style="margin-top:14px">Added since ${since}</h3>` + news.map(r=>`<div class="risk-sub" style="margin:3px 0">• ${r.id} — ${esc(r.title)} (score ${score(r)})</div>`).join("");
+    if(removed.length) html += `<h3 style="margin-top:14px">Removed since ${since}</h3>` + removed.map(r=>`<div class="risk-sub" style="margin:3px 0">• ${r.id} — ${esc(r.title)}</div>`).join("");
+    html += `</div>`;
+  }
+
+  document.getElementById("packBody").innerHTML = html;
+}
+
 /* ============ IMPORT / EXPORT ============ */
 function download(name, text, type){
   const a = document.createElement("a");
@@ -1161,7 +1433,7 @@ function exportJSON(mineOnly){
     del = deletedRisks.filter(r=>AREA_MAP[r.l2] && ownerFirst(area(r).cat.owner)===role);
     if(!data.length && !del.length){ toast("No risks in your areas yet."); return; }
   }
-  const payload = { format:"tcf-risk-register", version:2, exported:new Date().toISOString(), exportedBy: role, risks:data, deleted:del };
+  const payload = { format:"tcf-risk-register", version:3, exported:new Date().toISOString(), exportedBy: role, risks:data, deleted:del, settings };
   download(`tcf-risk-register${mineOnly?"-"+role.toLowerCase():""}-${TODAY}.json`, JSON.stringify(payload,null,2), "application/json");
   toast(`Exported ${data.length} risk${data.length===1?"":"s"}.`);
 }
@@ -1218,6 +1490,9 @@ function importJSON(input){
           deletedRisks.push(dt);
         }
       });
+      if(payload && payload.settings && (payload.settings.updated||"") > (settings.updated||"")){
+        settings = mergeSettings(payload.settings);
+      }
       persist(); renderAll();
       toast(`Merged: ${added} added, ${updated} updated, ${removed} removed, ${skipped} unchanged.`);
     }catch(e){ toast("Could not read that file — expected a register JSON export."); }

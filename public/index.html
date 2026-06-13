@@ -713,7 +713,7 @@ const store = {
 const PEOPLE = ["Julia","Jim","Nikesh","Jacqui","Chris"];
 const ADMINS = ["Jim","Julia"];                       // access-all-areas
 const DEFAULT_SETTINGS = {
-  emails: {Jim:"jim.riddiford@churchillfellowship.org", Julia:"", Nikesh:"", Jacqui:"", Chris:""},
+  emails: {Jim:"jim.riddiford@churchillfellowship.org", Julia:"julia.weston@churchillfellowship.org", Nikesh:"nikesh.patel@churchillfellowship.org", Jacqui:"jacqui.morrissey@churchillfellowship.org", Chris:"chris.mann@churchillfellowship.org"},
   // Full meeting schedules per committee; the app auto-picks the last past / next future date.
   schedules: {
     Board: ["2026-03-26","2026-07-23","2026-11-26"],
@@ -753,7 +753,8 @@ function migrate(list){
 function mergeSettings(s){
   const base = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   if(s && typeof s==="object"){
-    Object.assign(base.emails, s.emails||{});
+    // Only overlay non-empty saved emails, so baked-in defaults fill any blanks.
+    if(s.emails) Object.keys(s.emails).forEach(p=>{ if((s.emails[p]||"").trim()) base.emails[p] = s.emails[p].trim(); });
     if(s.schedules) Object.keys(s.schedules).forEach(c=>{ if(Array.isArray(s.schedules[c])) base.schedules[c] = s.schedules[c].slice(); });
     if(s.updated) base.updated = s.updated;
   }

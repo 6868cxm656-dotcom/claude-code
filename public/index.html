@@ -198,6 +198,24 @@
   .hot-box .h-lbl{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:6px}
   .pack-table td,.pack-table th{font-size:12px;padding:8px 10px}
 
+  /* approvals + proposals */
+  .navbadge{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:#fff;color:var(--red-dark);font-size:10.5px;font-weight:800;margin-left:4px;vertical-align:1px}
+  .tag-prop{background:#fff3cd;color:#7a5d00}
+  .prop-card{border:1px solid var(--line);border-left:4px solid #b8860b;border-radius:12px;padding:14px 16px;margin-bottom:12px;break-inside:avoid}
+  .prop-card.kind-new{border-left-color:var(--low)}
+  .prop-card.kind-delete{border-left-color:var(--sev)}
+  .prop-card h4{font-size:14px;margin-bottom:3px}
+  .prop-meta{font-size:11.5px;color:var(--muted);margin-bottom:8px}
+  .prop-note{font-size:12.5px;background:#faf8f7;border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-bottom:10px}
+  .diff-table{width:100%;border:1px solid var(--line);border-radius:8px;box-shadow:none}
+  .diff-table td,.diff-table th{font-size:12px;padding:6px 9px;vertical-align:top}
+  .diff-field{font-weight:700;width:120px;color:var(--muted)}
+  .diff-old{color:var(--sev);text-decoration:line-through;opacity:.8}
+  .diff-new{color:var(--low);font-weight:600}
+  .prop-actions{display:flex;gap:8px;margin-top:10px}
+  .btn-approve{background:var(--low);color:#fff}
+  .pending-banner{background:#fff8e1;border:1px solid #f0d98a;color:#7a5d00;border-radius:9px;padding:9px 12px;font-size:12.5px;font-weight:600}
+
   footer{max-width:1500px;margin:0 auto;padding:0 28px 36px;color:var(--muted);font-size:12px}
   @media print{
     header .head-controls,nav,.filters,.no-print,#addBtn,footer,.overlay{display:none!important}
@@ -259,6 +277,7 @@ window.onerror = function(msg, src, line){
     <button id="tab-taxonomy" onclick="showView('taxonomy')">Taxonomy &amp; appetite</button>
     <button id="tab-changes" onclick="showView('changes');renderChanges()">Change report</button>
     <button id="tab-pack" onclick="showView('pack');renderPack()">Committee pack</button>
+    <button id="tab-approvals" onclick="showView('approvals');renderApprovals()">Approvals <span id="apprBadge" class="navbadge" style="display:none">0</span></button>
   </nav>
 </header>
 
@@ -473,6 +492,15 @@ window.onerror = function(msg, src, line){
     </div>
     <div id="packBody"></div>
   </section>
+
+  <!-- APPROVALS -->
+  <section id="view-approvals" class="view">
+    <div class="card">
+      <h3>Change approvals <span class="hint">proposed changes awaiting QA</span></h3>
+      <p class="rubric-note" id="apprIntro"></p>
+      <div id="apprBody"></div>
+    </div>
+  </section>
 </main>
 
 <footer>
@@ -490,6 +518,7 @@ window.onerror = function(msg, src, line){
       <button class="btn-soft" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-b">
+      <div class="fld full" id="mPendingBanner" style="display:none"></div>
       <div class="fld full"><label>Risk title</label><input id="mRiskTitle" type="text"></div>
       <div class="fld full"><label>Description — cause and consequence</label><textarea id="mDesc"></textarea></div>
       <div class="fld full"><label>Taxonomy area (sets category, owner and appetite)</label><select id="mArea" onchange="refreshScoreUI()"></select></div>
@@ -752,6 +781,11 @@ function loadState(){
 function persist(){ store.set(LS_KEY, JSON.stringify({risks, deleted: deletedRisks, settings})); }
 
 /* ============ HELPERS ============ */
+// Risks visible in live views — excludes proposed-new risks awaiting QA.
+const PENDING_FIELDS = ["title","desc","l2","com","l","i","controls","actions","status","review","draft"];
+function liveList(){ return risks.filter(r=>!(r.pending && r.pending.kind==="new")); }
+function pendingList(){ return risks.filter(r=>r.pending); }
+function pickFields(o){ const f={}; PENDING_FIELDS.forEach(k=>f[k]=o[k]); return f; }
 function score(r){ return r.l * r.i; }
 function band(s){ return s>=16 ? "Severe" : s>=10 ? "High" : s>=5 ? "Moderate" : "Low"; }
 function bandColor(s){ return s>=16 ? "var(--sev)" : s>=10 ? "var(--high)" : s>=5 ? "var(--mod)" : "var(--low)"; }
@@ -856,7 +890,7 @@ function rewind(r, cutoff){
 function stateAt(dateStr){
   const cutoff = dateStr + "T23:59:59.999Z";
   const out = {};
-  risks.forEach(r=>{ const s = rewind(r, cutoff); if(s) out[s.id] = s; });
+  liveList().forEach(r=>{ const s = rewind(r, cutoff); if(s) out[s.id] = s; });
   deletedRisks.forEach(d=>{ if((d.deletedAt||"") > cutoff){ const s = rewind(d, cutoff); if(s) out[s.id] = s; } });
   return out;
 }
@@ -887,6 +921,13 @@ function setRole(v, fromIdentity){
   document.getElementById("settingsBtn").style.display = isAdmin() ? "" : "none";
   renderAll();
 }
+function updateApprBadge(){
+  const n = pendingList().length;
+  const b = document.getElementById("apprBadge");
+  if(!b) return;
+  b.textContent = n;
+  b.style.display = n ? "" : "none";
+}
 
 /* ============ VIEWS ============ */
 function showView(v){
@@ -898,19 +939,21 @@ function showView(v){
 
 /* ---- dashboard ---- */
 function renderDashboard(){
-  const open = risks.filter(r=>r.status!=="Closed");
+  const live = liveList();
+  const open = live.filter(r=>r.status!=="Closed");
   const breaches = open.filter(outsideAppetite);
   const severe = open.filter(r=>score(r)>=16);
   const od = open.filter(overdue);
-  const flagged = risks.filter(r=>r.flag);
+  const flagged = live.filter(r=>r.flag);
+  const pend = pendingList().length;
   const kp = document.getElementById("kpis");
   kp.innerHTML = `
-    <div class="kpi neutral" onclick="goRegister({})"><div class="n">${risks.length}</div><div class="t">Risks on register</div></div>
+    <div class="kpi neutral" onclick="goRegister({})"><div class="n">${live.length}</div><div class="t">Risks on register</div></div>
     <div class="kpi alert" onclick="goRegister({breach:true})"><div class="n">${breaches.length}</div><div class="t">Outside draft appetite</div></div>
     <div class="kpi alert" onclick="goRegister({flagged:true})"><div class="n">${flagged.length}</div><div class="t">🚩 Flagged for review</div></div>
     <div class="kpi warn" onclick="goRegister({minScore:16})"><div class="n">${severe.length}</div><div class="t">Severe (16–25)</div></div>
     <div class="kpi warn" onclick="goRegister({overdue:true})"><div class="n">${od.length}</div><div class="t">Reviews overdue</div></div>
-    <div class="kpi ok"><div class="n">${risks.filter(r=>r.draft).length}</div><div class="t">Draft placeholders to confirm</div></div>`;
+    <div class="kpi ok" onclick="showView('approvals');renderApprovals()"><div class="n">${pend}</div><div class="t">⏳ Awaiting QA approval</div></div>`;
 
   // heatmap: rows likelihood 5→1, cols impact 1→5
   const heat = document.getElementById("heat");
@@ -999,7 +1042,7 @@ function renderRegister(){
   const ffl = document.getElementById("fFlag").classList.contains("on");
   const fod = document.getElementById("fOverdue").classList.contains("on");
 
-  let list = risks.filter(r=>{
+  let list = liveList().filter(r=>{
     const a = area(r);
     if(fc && a.cat.ref!==fc) return false;
     if(fo && a.cat.owner!==fo) return false;
@@ -1023,14 +1066,14 @@ function renderRegister(){
   const arr = document.getElementById("arr-"+sortKey); if(arr) arr.textContent = sortDir>0?"▲":"▼";
 
   document.getElementById("regCount").textContent =
-    `${list.length} of ${risks.length} risks` + (cellFilter?` · heatmap cell L${cellFilter[0]}×I${cellFilter[1]}`:"") + (minScoreFilter?` · score ≥ ${minScoreFilter}`:"");
+    `${list.length} of ${liveList().length} risks` + (cellFilter?` · heatmap cell L${cellFilter[0]}×I${cellFilter[1]}`:"") + (minScoreFilter?` · score ≥ ${minScoreFilter}`:"");
 
   document.getElementById("regBody").innerHTML = list.map(r=>{
     const a = area(r), s = score(r), app = appetite(r);
     const lock = canEdit(r) ? "" : ` <span class="lockicon" title="Read-only for your role">🔒</span>`;
     return `<tr onclick="openModal('${r.id}')">
       <td style="font-weight:700;color:var(--muted)">${r.id}</td>
-      <td><div class="risk-title">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.flag?`<span class="tag tag-flag" title="Review requested by ${esc(r.flag.by)}${r.flag.note? ": "+esc(r.flag.note):""}">🚩 review</span>`:""}${lock}</div><div class="risk-sub">${esc(r.desc).slice(0,110)}${r.desc.length>110?"…":""}</div></td>
+      <td><div class="risk-title">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.flag?`<span class="tag tag-flag" title="Review requested by ${esc(r.flag.by)}${r.flag.note? ": "+esc(r.flag.note):""}">🚩 review</span>`:""}${r.pending?`<span class="tag tag-prop" title="Proposed ${esc(r.pending.kind)} by ${esc(r.pending.by)} awaiting QA">⏳ ${r.pending.kind==="delete"?"deletion ":""}proposal</span>`:""}${lock}</div><div class="risk-sub">${esc(r.desc).slice(0,110)}${r.desc.length>110?"…":""}</div></td>
       <td><div style="font-weight:700;font-size:12.5px">${esc(a.cat.name)}</div><div class="risk-sub">${a.ref} ${esc(a.name)}</div></td>
       <td style="white-space:nowrap">${esc(a.cat.owner)}</td>
       <td style="white-space:nowrap"><span class="tag tag-app" title="${esc(COMMITTEES[r.com]||"")}">${esc(r.com||"–")}</span></td>
@@ -1050,8 +1093,8 @@ function renderTaxonomy(){
     `<span class="li"><span class="sw" style="background:${a.color}"></span>${a.label} — ${a.desc} (tolerates residual ≤ ${a.max})</span>`).join("");
   document.getElementById("taxGrid").innerHTML = TAXONOMY.map(c=>{
     const rows = c.areas.map(a=>{
-      const n = risks.filter(r=>r.l2===a.ref && r.status!=="Closed").length;
-      const br = risks.filter(r=>r.l2===a.ref && outsideAppetite(r)).length;
+      const n = liveList().filter(r=>r.l2===a.ref && r.status!=="Closed").length;
+      const br = liveList().filter(r=>r.l2===a.ref && outsideAppetite(r)).length;
       return `<div class="tax-area" onclick="goRegisterArea('${a.ref}')" title="${APPETITES[a.app].label}">
         <span class="dot" style="background:${APPETITES[a.app].color}"></span>
         <span class="anm">${a.ref} ${esc(a.name)}</span>
@@ -1165,28 +1208,43 @@ function openModal(id){
   const r = id ? risks.find(x=>x.id===id) : null;
   const isNew = !r;
   const editable = isNew ? role!=="viewer" : canEdit(r);
+  // Proposers see their own pending-edit values so they can revise; everyone else sees live.
+  const showProp = r && r.pending && r.pending.kind==="edit" && r.pending.by===role;
+  const src = r ? (showProp ? Object.assign({}, r, r.pending.fields) : r) : null;
   document.getElementById("mTitle").textContent = isNew ? "Add risk" : r.id + " — " + (editable ? "edit risk" : "view risk");
-  document.getElementById("mSub").textContent = isNew ? "" : `Last updated ${(r.updated||"").slice(0,10)}`;
-  document.getElementById("mRiskTitle").value = r? r.title : "";
-  document.getElementById("mDesc").value = r? r.desc : "";
-  const defaultArea = (role!=="viewer" && role!=="lead")
+  document.getElementById("mSub").textContent = isNew ? "" : `Last amended ${(r.updated||"").slice(0,10)}`;
+  document.getElementById("mRiskTitle").value = src? src.title : "";
+  document.getElementById("mDesc").value = src? src.desc : "";
+  const defaultArea = (role!=="viewer")
       ? (TAXONOMY.find(c=>ownerFirst(c.owner)===role)||TAXONOMY[0]).areas[0].ref
       : "1.1";
-  buildAreaOptions(document.getElementById("mArea"), r? r.l2 : defaultArea);
+  buildAreaOptions(document.getElementById("mArea"), src? src.l2 : defaultArea);
   document.getElementById("mCom").innerHTML = Object.keys(COMMITTEES).map(c=>
-    `<option value="${c}" ${r && r.com===c ? "selected":""}>${c} — ${COMMITTEES[c]}</option>`).join("");
-  pickL = r? r.l : 3; pickI = r? r.i : 3;
-  document.getElementById("mControls").value = r? (r.controls||[]).join("\n") : "";
-  document.getElementById("mActions").value = r? (r.actions||[]).join("\n") : "";
-  document.getElementById("mStatus").value = r? r.status : "Open";
-  document.getElementById("mReview").value = r? (r.review||"") : "";
-  document.getElementById("mDraft").value = r? (r.draft?"yes":"no") : "yes";
+    `<option value="${c}" ${src && src.com===c ? "selected":""}>${c} — ${COMMITTEES[c]}</option>`).join("");
+  pickL = src? src.l : 3; pickI = src? src.i : 3;
+  document.getElementById("mControls").value = src? (src.controls||[]).join("\n") : "";
+  document.getElementById("mActions").value = src? (src.actions||[]).join("\n") : "";
+  document.getElementById("mStatus").value = src? src.status : "Open";
+  document.getElementById("mReview").value = src? (src.review||"") : "";
+  document.getElementById("mDraft").value = src? (src.draft?"yes":"no") : "yes";
   document.getElementById("mUpdated").value = r? (r.updated||"").slice(0,10) : TODAY;
+
+  // pending banner
+  const pb = document.getElementById("mPendingBanner");
+  if(r && r.pending){
+    pb.style.display = "";
+    const p = r.pending;
+    const kindTxt = p.kind==="new" ? "New-risk proposal" : p.kind==="delete" ? "Deletion proposal" : "Change proposal";
+    pb.innerHTML = `<div class="pending-banner">⏳ ${kindTxt} by ${esc(p.by)} on ${(p.at||"").slice(0,10)} awaiting QA${p.note? " — "+esc(p.note):""}.${isAdmin()?' Approve or reject it on the <b>Approvals</b> tab.':(showProp?' You are editing your proposed version; saving updates the proposal.':'')}</div>`;
+  } else pb.style.display = "none";
 
   ["mRiskTitle","mDesc","mArea","mCom","mControls","mActions","mStatus","mReview","mDraft"].forEach(fid=>
     document.getElementById(fid).disabled = !editable);
   document.getElementById("mSave").style.display = editable? "" : "none";
+  document.getElementById("mSave").textContent = (editable && !isAdmin() && role!=="viewer") ? "Propose change" : "Save";
   document.getElementById("mDelete").style.display = (editable && !isNew)? "" : "none";
+  document.getElementById("mDelete").textContent = isAdmin() ? "Delete risk"
+      : (r && r.pending && r.pending.kind==="new" && r.pending.by===role) ? "Withdraw proposal" : "Propose deletion";
   document.getElementById("mFlag").style.display = (!isNew && role!=="viewer" && !(r&&r.flag))? "" : "none";
   document.getElementById("mClearFlag").style.display = (r && r.flag && (canEdit(r) || r.flag.by===role))? "" : "none";
   const fi = document.getElementById("mFlagInfo");
@@ -1204,7 +1262,9 @@ function openModal(id){
     document.getElementById("mHistory").innerHTML = hist.map(h=>{
       const when = (h.at||"").slice(0,10);
       if(h.created) return `<div class="h-item"><b>${when}</b> — created${h.by && h.by!=="baseline" ? " by "+esc(h.by) : " (baseline draft)"}</div>`;
-      return `<div class="h-item"><b>${when}</b> — ${esc(h.by||"?")}: ${(h.changes||[]).map(describeChange).join("; ")}</div>`;
+      if(h.note && !h.changes) return `<div class="h-item"><b>${when}</b> — ${esc(h.by||"?")}: ${esc(h.note)}</div>`;
+      const appr = h.approvedBy ? ` <span class="risk-sub">(approved by ${esc(h.approvedBy)})</span>` : "";
+      return `<div class="h-item"><b>${when}</b> — ${esc(h.by||"?")}: ${(h.changes||[]).map(describeChange).join("; ")}${appr}</div>`;
     }).join("") || '<div class="h-item">No changes recorded.</div>';
   }
   buildPickers(editable);
@@ -1303,29 +1363,163 @@ function saveRisk(){
     updated: new Date().toISOString()
   };
   if(!canEditArea(obj.l2)){ toast("You can only save risks in your own areas."); return; }
+  const admin = isAdmin();
   const idx = risks.findIndex(r=>r.id===obj.id);
   if(idx>=0){
     const prev = risks[idx];
     const changes = diffRisk(prev, obj);
-    if(!changes.length){ closeModal(); toast("No changes to save."); return; }
-    obj.created = prev.created || prev.updated || BASE;
-    obj.history = (prev.history||[]).concat([{at:obj.updated, by:role, changes}]);
-    risks[idx] = obj;
+    const proposedFields = pickFields(obj);
+    if(admin){
+      // QA themselves — apply live immediately
+      if(!changes.length && !prev.pending){ closeModal(); toast("No changes to save."); return; }
+      obj.created = prev.created || prev.updated || BASE;
+      obj.flag = prev.flag || null;
+      obj.pending = null; obj.pendingNew = false;            // an admin edit overrides any pending proposal
+      obj.history = (prev.history||[]).concat(changes.length ? [{at:obj.updated, by:role, changes}] : []);
+      risks[idx] = obj;
+      persist(); closeModal(); renderAll(); toast(`${obj.id} saved (live).`);
+    }else{
+      // owner — quarantine as a proposal; live fields unchanged
+      if(!changes.length){ closeModal(); toast("No changes to propose."); return; }
+      const note = (prompt("Optional note for Jim/Julia explaining this change:")||"").trim();
+      prev.pending = {kind:"edit", by:role, at:obj.updated, note, fields:proposedFields};
+      persist(); closeModal(); renderAll();
+      notifyAdmins(prev, "edit", note);
+      toast("Change proposed — sent to Jim/Julia for QA.");
+    }
   }else{
     obj.created = obj.updated;
     obj.history = [{at:obj.updated, by:role, created:true}];
-    risks.push(obj);
+    if(admin){
+      obj.pending = null; obj.pendingNew = false;
+      risks.push(obj);
+      persist(); closeModal(); renderAll(); toast(`${obj.id} added (live).`);
+    }else{
+      const note = (prompt("Optional note for Jim/Julia explaining this new risk:")||"").trim();
+      obj.pendingNew = true;
+      obj.pending = {kind:"new", by:role, at:obj.updated, note};
+      risks.push(obj);
+      persist(); closeModal(); renderAll();
+      notifyAdmins(obj, "new", note);
+      toast("New risk proposed — sent to Jim/Julia for QA.");
+    }
   }
-  persist(); closeModal(); renderAll(); toast(`${obj.id} saved.`);
 }
 function deleteRisk(){
   const r = risks.find(x=>x.id===editingId);
   if(!r) return;
-  if(!confirm(`Delete ${r.id} — “${r.title}”? This only affects your local copy until you export/share.`)) return;
-  deletedRisks = deletedRisks.filter(d=>d.id!==r.id);
-  deletedRisks.push({...r, deletedAt:new Date().toISOString(), deletedBy:role});
-  risks = risks.filter(x=>x.id!==editingId);
-  persist(); closeModal(); renderAll(); toast("Risk deleted.");
+  if(isAdmin()){
+    if(!confirm(`Delete ${r.id} — “${r.title}”? This only affects your local copy until you export/share.`)) return;
+    deletedRisks = deletedRisks.filter(d=>d.id!==r.id);
+    deletedRisks.push({...r, pending:null, deletedAt:new Date().toISOString(), deletedBy:role});
+    risks = risks.filter(x=>x.id!==editingId);
+    persist(); closeModal(); renderAll(); toast("Risk deleted (live).");
+  }else{
+    // owner proposing a new risk can withdraw it outright; otherwise propose deletion
+    if(r.pending && r.pending.kind==="new" && r.pending.by===role){
+      risks = risks.filter(x=>x.id!==editingId);
+      persist(); closeModal(); renderAll(); toast("Proposed risk withdrawn.");
+      return;
+    }
+    const note = (prompt("Propose deletion of this risk — note for Jim/Julia:")||"").trim();
+    r.pending = {kind:"delete", by:role, at:new Date().toISOString(), note};
+    persist(); closeModal(); renderAll();
+    notifyAdmins(r, "delete", note);
+    toast("Deletion proposed — sent to Jim/Julia for QA.");
+  }
+}
+function notifyAdmins(r, kind, note){
+  const to = ADMINS.map(a=>(settings.emails[a]||"").trim()).filter(Boolean).join(",");
+  const verb = kind==="new" ? "New risk proposed" : kind==="delete" ? "Risk deletion proposed" : "Change proposed";
+  const subject = encodeURIComponent(`[TCF Risk Register] ${verb} for QA: ${r.id} — ${r.title}`);
+  const body = encodeURIComponent(
+    `${role} has proposed a change requiring QA approval.\n\n`+
+    `${r.id} — ${r.title}\nType: ${kind}\nArea: ${area(r).cat.name} · ${area(r).name}\n`+
+    `Note: ${note||"(none)"}\n\nOpen the register and go to the Approvals tab to approve or reject.\n`+
+    `${location.origin && location.origin!=="null" ? location.href.split("#")[0] : "(shared register link)"}\n`);
+  try{ window.location.href = `mailto:${to}?subject=${subject}&body=${body}`; }catch(e){}
+}
+
+/* ============ APPROVALS ============ */
+function fmtVal(f, v){
+  if(f==="controls" || f==="actions") return (v||[]).length ? (v||[]).join("; ") : "(none)";
+  if(f==="draft") return v ? "Draft" : "Confirmed";
+  if(f==="com") return v + (COMMITTEES[v]? " — "+COMMITTEES[v] : "");
+  if(f==="l2") return v + (AREA_MAP[v]? " "+AREA_MAP[v].name : "");
+  return (v===""||v==null) ? "(none)" : String(v);
+}
+function proposalDiff(r){
+  const p = r.pending;
+  if(p.kind==="delete") return "";
+  const cur = p.kind==="new" ? null : r;
+  const proposed = p.kind==="new" ? r : Object.assign({}, r, p.fields);
+  const keys = Object.keys(FIELDS).filter(f=>f!=="flag" && (p.kind==="new" || !sameVal(cur[f], proposed[f])));
+  if(!keys.length) return '<div class="risk-sub">No field differences.</div>';
+  return `<table class="diff-table"><tbody>` + keys.map(f=>
+    `<tr><td class="diff-field">${FIELDS[f]}</td>`+
+    (p.kind==="new"
+      ? `<td class="diff-new">${esc(fmtVal(f, proposed[f]))}</td>`
+      : `<td><span class="diff-old">${esc(fmtVal(f, cur[f]))}</span> &nbsp;→&nbsp; <span class="diff-new">${esc(fmtVal(f, proposed[f]))}</span></td>`)+
+    `</tr>`).join("") + `</tbody></table>`;
+}
+function renderApprovals(){
+  const intro = document.getElementById("apprIntro");
+  const pend = pendingList().sort((a,b)=> (a.pending.at||"").localeCompare(b.pending.at||""));
+  intro.textContent = isAdmin()
+    ? "Owners' proposed changes are held here and do not affect the live register until you or Julia approve them."
+    : "Your proposed changes are held here until Jim or Julia approve them. You can see their status below but only they can approve.";
+  const body = document.getElementById("apprBody");
+  if(!pend.length){ body.innerHTML = '<div class="none-msg">No changes are awaiting approval.</div>'; return; }
+  body.innerHTML = pend.map(r=>{
+    const p = r.pending, a = area(r);
+    const kindLabel = p.kind==="new" ? "New risk" : p.kind==="delete" ? "Delete risk" : "Edit";
+    const acts = isAdmin()
+      ? `<div class="prop-actions"><button class="btn-approve" onclick="approveProposal('${r.id}')">✓ Approve</button>
+         <button class="btn-danger" onclick="rejectProposal('${r.id}')">✕ Reject</button>
+         <button class="btn-soft" onclick="openModal('${r.id}')">Open risk</button></div>`
+      : `<div class="prop-actions"><span class="risk-sub">Awaiting QA by Jim or Julia.</span></div>`;
+    return `<div class="prop-card kind-${p.kind}">
+      <h4>${kindLabel}: ${r.id} — ${esc(p.kind==="edit" && p.fields? p.fields.title : r.title)} ${p.kind!=="delete"?`<span class="pill" style="background:${bandHex(p.kind==="edit"&&p.fields?p.fields.l*p.fields.i:score(r))}">${p.kind==="edit"&&p.fields?p.fields.l*p.fields.i:score(r)}</span>`:""}</h4>
+      <div class="prop-meta">${esc(a.cat.name)} · ${esc(a.cat.owner)} · proposed by ${esc(p.by)} on ${(p.at||"").slice(0,10)}</div>
+      ${p.note?`<div class="prop-note">📝 ${esc(p.note)}</div>`:""}
+      ${p.kind==="delete"?`<div class="risk-sub">Proposal to remove this risk from the register.</div>`:proposalDiff(r)}
+      ${acts}</div>`;
+  }).join("");
+}
+function approveProposal(id){
+  if(!isAdmin()) return;
+  const r = risks.find(x=>x.id===id); if(!r||!r.pending) return;
+  const p = r.pending, now = new Date().toISOString();
+  if(p.kind==="delete"){
+    r.history = (r.history||[]).concat([{at:now, by:role, note:`Deletion proposed by ${p.by} approved`}]);
+    deletedRisks = deletedRisks.filter(d=>d.id!==r.id);
+    deletedRisks.push(Object.assign({}, r, {pending:null, deletedAt:now, deletedBy:role}));
+    risks = risks.filter(x=>x.id!==id);
+  }else if(p.kind==="new"){
+    r.pendingNew = false; r.pending = null; r.updated = now;
+    r.history = (r.history||[]).concat([{at:now, by:role, note:`New risk proposed by ${p.by} approved — now live`}]);
+  }else{ // edit
+    const proposed = Object.assign({}, r, p.fields);
+    const changes = diffRisk(r, proposed);
+    Object.assign(r, p.fields);
+    r.pending = null; r.updated = now;
+    r.history = (r.history||[]).concat([{at:now, by:p.by, changes, approvedBy:role}]);
+  }
+  persist(); renderAll(); toast(`${id} approved — now live.`);
+}
+function rejectProposal(id){
+  if(!isAdmin()) return;
+  const r = risks.find(x=>x.id===id); if(!r||!r.pending) return;
+  const reason = prompt("Reason for rejecting (for the proposer):");
+  if(reason===null) return;
+  const p = r.pending, now = new Date().toISOString();
+  if(p.kind==="new"){
+    risks = risks.filter(x=>x.id!==id);                  // never went live — discard
+  }else{
+    r.history = (r.history||[]).concat([{at:now, by:role, note:`${p.kind} proposed by ${p.by} rejected: ${reason||"(no reason given)"}`}]);
+    r.pending = null;
+  }
+  persist(); renderAll(); toast("Proposal rejected.");
 }
 
 /* ============ SETTINGS (meetings & contacts) ============ */
@@ -1354,7 +1548,7 @@ function saveSettings(){
 }
 
 /* ============ COMMITTEE PACK ============ */
-function packScope(com){ return com==="Board" ? risks.slice() : risks.filter(r=>r.com===com); }
+function packScope(com){ return com==="Board" ? liveList() : liveList().filter(r=>r.com===com); }
 function renderPack(keepSince){
   const sel = document.getElementById("pCom");
   if(!sel.options.length) sel.innerHTML = Object.keys(COMMITTEES).map(c=>`<option value="${c}">${c} — ${COMMITTEES[c]}</option>`).join("");
@@ -1468,6 +1662,15 @@ function unionHistory(a, b){
   (a||[]).concat(b||[]).forEach(h=>{ m[(h.at||"")+"|"+(h.by||"")] = h; });
   return Object.values(m).sort((x,y)=> (x.at||"") < (y.at||"") ? -1 : 1);
 }
+/* Keep the newer of two pending proposals, but drop it if an applied change
+   (live edit or approval) on either side is newer than the proposal. */
+function reconcilePending(ours, theirs){
+  const cands = [ours&&ours.pending, theirs&&theirs.pending].filter(Boolean);
+  if(!cands.length) return null;
+  const cand = cands.sort((x,y)=> (y.at||"").localeCompare(x.at||""))[0];
+  const newestApplied = [ours&&ours.updated, theirs&&theirs.updated].filter(Boolean).sort().pop() || "";
+  return (cand.at||"") >= newestApplied ? cand : null;
+}
 function importJSON(input){
   const f = input.files[0]; if(!f) return;
   const rd = new FileReader();
@@ -1485,8 +1688,9 @@ function importJSON(input){
           const ours = risks[idx];
           const hist = unionHistory(ours.history, inR.history);
           const created = (ours.created||BASE) < (inR.created||BASE) ? ours.created : inR.created;
-          if((inR.updated||"") > (ours.updated||"")){ risks[idx] = {...inR, history:hist, created}; updated++; }
-          else { risks[idx] = {...ours, history:hist, created}; skipped++; }
+          const pending = reconcilePending(ours, inR);
+          if((inR.updated||"") > (ours.updated||"")){ risks[idx] = {...inR, history:hist, created, pending}; updated++; }
+          else { risks[idx] = {...ours, history:hist, created, pending}; if(pending!==(ours.pending||null)) updated++; else skipped++; }
         }else{
           const tomb = deletedRisks.find(d=>d.id===inR.id);
           if(tomb && (tomb.deletedAt||"") > (inR.updated||"")){ skipped++; return; } // our deletion is newer
@@ -1550,7 +1754,7 @@ function populateFilters(){
   document.getElementById("fOwner").innerHTML = '<option value="">All owners</option>' + owners.map(o=>`<option>${esc(o)}</option>`).join("");
   document.getElementById("fCom").innerHTML = '<option value="">All committees</option>' + Object.keys(COMMITTEES).map(c=>`<option value="${c}" title="${COMMITTEES[c]}">${c}</option>`).join("");
 }
-function renderAll(){ renderDashboard(); renderRegister(); renderTaxonomy(); renderChanges(); }
+function renderAll(){ renderDashboard(); renderRegister(); renderTaxonomy(); renderChanges(); updateApprBadge(); if(document.getElementById("view-approvals").classList.contains("active")) renderApprovals(); }
 populateFilters();
 renderRubric("rubricOverview");
 renderRubric("rubricModal");

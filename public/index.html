@@ -541,7 +541,7 @@ window.onerror = function(msg, src, line){
       <button class="btn-soft" onclick="closeSettings()">✕</button>
     </div>
     <div class="modal-b">
-      <div class="fld full"><label>Last meeting date per committee</label><div id="setMeetings"></div></div>
+      <div class="fld full"><label>Meeting dates per committee (one per line)</label><div id="setMeetings"></div></div>
       <div class="fld full"><label>SLT email addresses (for review-request emails)</label><div id="setEmails"></div></div>
     </div>
     <div class="modal-f">
@@ -685,8 +685,15 @@ const PEOPLE = ["Julia","Jim","Nikesh","Jacqui","Chris"];
 const ADMINS = ["Jim","Julia"];                       // access-all-areas
 const DEFAULT_SETTINGS = {
   emails: {Jim:"jim.riddiford@churchillfellowship.org", Julia:"", Nikesh:"", Jacqui:"", Chris:""},
-  meetings: {Board:"", PFC:"", ARGC:"", IC:"", RNC:""},
-  updated: "2026-06-12T00:00:00Z"
+  // Full meeting schedules per committee; the app auto-picks the last past / next future date.
+  schedules: {
+    Board: ["2026-03-26","2026-07-23","2026-11-26"],
+    PFC:   ["2026-02-19","2026-06-02","2026-10-29"],
+    ARGC:  ["2026-02-04","2026-07-16","2026-09-16","2026-11-10"],
+    IC:    ["2026-01-28","2026-06-25","2026-11-04"],
+    RNC:   ["2026-02-24","2026-05-06","2026-09-03"]
+  },
+  updated: "2026-06-13T00:00:00Z"
 };
 const loaded = loadState();
 let risks = loaded.risks;
@@ -718,10 +725,18 @@ function mergeSettings(s){
   const base = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   if(s && typeof s==="object"){
     Object.assign(base.emails, s.emails||{});
-    Object.assign(base.meetings, s.meetings||{});
+    if(s.schedules) Object.keys(s.schedules).forEach(c=>{ if(Array.isArray(s.schedules[c])) base.schedules[c] = s.schedules[c].slice(); });
     if(s.updated) base.updated = s.updated;
   }
   return base;
+}
+function lastMeeting(com){
+  const ds = (settings.schedules[com]||[]).filter(x=>x && x<=TODAY).sort();
+  return ds.length ? ds[ds.length-1] : "";
+}
+function nextMeeting(com){
+  const ds = (settings.schedules[com]||[]).filter(x=>x && x>TODAY).sort();
+  return ds.length ? ds[0] : "";
 }
 function loadState(){
   try{
@@ -1315,18 +1330,27 @@ function deleteRisk(){
 
 /* ============ SETTINGS (meetings & contacts) ============ */
 function openSettings(){
-  document.getElementById("setMeetings").innerHTML = Object.keys(COMMITTEES).map(c=>
-    `<div class="set-row"><label title="${COMMITTEES[c]}">${c}</label><input type="date" id="setM-${c}" value="${esc(settings.meetings[c]||"")}"></div>`).join("");
+  document.getElementById("setMeetings").innerHTML = Object.keys(COMMITTEES).map(c=>{
+    const last = lastMeeting(c), next = nextMeeting(c);
+    const note = `last: ${last||"—"} · next: ${next||"—"}`;
+    return `<div class="set-row" style="grid-template-columns:70px 1fr;align-items:start">
+      <label title="${COMMITTEES[c]}">${c}</label>
+      <div><textarea id="setM-${c}" rows="3" style="font:inherit;width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px" placeholder="One date per line (YYYY-MM-DD)">${esc((settings.schedules[c]||[]).join("\n"))}</textarea>
+      <div class="risk-sub" style="margin-top:2px">${note}</div></div></div>`;
+  }).join("");
   document.getElementById("setEmails").innerHTML = PEOPLE.map(p=>
     `<div class="set-row"><label>${p}</label><input type="email" id="setE-${p}" placeholder="name@churchillfellowship.org" value="${esc(settings.emails[p]||"")}"></div>`).join("");
   document.getElementById("settingsOverlay").classList.add("open");
 }
 function closeSettings(){ document.getElementById("settingsOverlay").classList.remove("open"); }
 function saveSettings(){
-  Object.keys(COMMITTEES).forEach(c=>{ settings.meetings[c] = document.getElementById("setM-"+c).value || ""; });
+  Object.keys(COMMITTEES).forEach(c=>{
+    settings.schedules[c] = (document.getElementById("setM-"+c).value || "")
+      .split("\n").map(s=>s.trim()).filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s)).sort();
+  });
   PEOPLE.forEach(p=>{ settings.emails[p] = document.getElementById("setE-"+p).value.trim(); });
   settings.updated = new Date().toISOString();
-  persist(); closeSettings(); toast("Settings saved.");
+  persist(); closeSettings(); renderAll(); toast("Settings saved.");
 }
 
 /* ============ COMMITTEE PACK ============ */
@@ -1336,8 +1360,9 @@ function renderPack(keepSince){
   if(!sel.options.length) sel.innerHTML = Object.keys(COMMITTEES).map(c=>`<option value="${c}">${c} — ${COMMITTEES[c]}</option>`).join("");
   const com = sel.value || "Board";
   const sinceEl = document.getElementById("pSince");
-  if(!keepSince) sinceEl.value = settings.meetings[com] || "";
+  if(!keepSince) sinceEl.value = lastMeeting(com) || "";
   const since = sinceEl.value;
+  const next = nextMeeting(com);
   const scope = packScope(com).filter(r=>r.status!=="Closed").sort((a,b)=>score(b)-score(a));
   const ids = new Set(scope.map(r=>r.id));
   const breaches = scope.filter(outsideAppetite);
@@ -1348,7 +1373,7 @@ function renderPack(keepSince){
   let html = `
   <div class="card pack-h">
     <h2>TCF Risk Register — ${com==="Board"?"Full Board":COMMITTEES[com]} pack</h2>
-    <div class="meta">Generated ${TODAY} · ${scope.length} open risk${scope.length===1?"":"s"} in scope${since? ` · changes shown since ${since} (last recorded ${com} meeting)` : " · no last-meeting date recorded — set one under ⚙ Meetings & contacts"} · DRAFT scores marked for owner confirmation</div>
+    <div class="meta">Generated ${TODAY} · ${scope.length} open risk${scope.length===1?"":"s"} in scope${since? ` · changes shown since the last ${com} meeting (${since})` : " · no past meeting recorded — set dates under ⚙ Meetings & contacts"}${next? ` · next ${com} meeting ${next}` : ""} · DRAFT scores marked for owner confirmation</div>
   </div>
   <div class="kpis">
     <div class="kpi neutral"><div class="n">${scope.length}</div><div class="t">Open risks in scope</div></div>

@@ -14,7 +14,7 @@
       "database_name": "tcf-risk-register",
       // Paste the database_id from `wrangler d1 create tcf-risk-register`
       // (or the Cloudflare dashboard) here before the first deploy.
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "5694510a-a910-418d-a04b-4f171c7e2f92"
     }
   ],
   // Apply migrations (schema + seed) then deploy, on every Cloudflare build.

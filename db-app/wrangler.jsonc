@@ -1,0 +1,24 @@
+{
+  // STAGING Worker for the database-backed register. Production (tcf-risk-register)
+  // is untouched. Cutover happens only after sign-off.
+  "name": "tcf-risk-register-staging",
+  "main": "worker.js",
+  "compatibility_date": "2026-06-15",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tcf-risk-register",
+      // Paste the database_id from `wrangler d1 create tcf-risk-register`
+      // (or the Cloudflare dashboard) here before the first deploy.
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ],
+  // Apply migrations (schema + seed) then deploy, on every Cloudflare build.
+  "build": {
+    "command": "npx wrangler d1 migrations apply tcf-risk-register --remote"
+  }
+}

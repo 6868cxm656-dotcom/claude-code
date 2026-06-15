@@ -1,7 +1,8 @@
 {
-  // STAGING Worker for the database-backed register. Production (tcf-risk-register)
-  // is untouched. Cutover happens only after sign-off.
-  "name": "tcf-risk-register-staging",
+  // Database-backed register. This name matches the connected Cloudflare
+  // application (tcf-risk-register). For non-/api requests the Worker serves the
+  // existing UI unchanged, so the live page is unaffected until the Phase 2 swap.
+  "name": "tcf-risk-register",
   "main": "worker.js",
   "compatibility_date": "2026-06-15",
   "assets": {

@@ -1,40 +1,41 @@
-# TCF Risk Register — shared-database app (STAGING)
+# TCF Risk Register — shared-database app
 
 This folder is the database-backed version of the register, built per
-`risk-taxonomy/SHARED_DB_PLAN.md`. It is deployed as a **separate staging Worker**
-(`tcf-risk-register-staging`) so the live register is untouched until cutover.
+`risk-taxonomy/SHARED_DB_PLAN.md`. It is **live**: the Cloudflare Worker
+`tcf-risk-register` serves it from the `db-staging` branch, backed by a
+Cloudflare D1 database, behind staff-only Cloudflare Access.
 
 ## What's here
 - `worker.js` — Cloudflare Worker: serves the UI and the `/api/*` JSON API,
   reads the Cloudflare Access identity, enforces roles and the proposal/approval
-  rules server-side.
+  rules server-side, and self-initialises the database on first request.
 - `logic.mjs` — pure business logic (roles, permissions, proposal/approval state
   machine). Unit-tested in node.
-- `migrations/0001_init.sql` — D1 schema.
-- `migrations/0002_seed.sql` — the current 40-risk baseline + settings.
-- `public/index.html` — the front-end. **Phase 2** swaps its data layer from
-  browser storage to the API; until then it still runs standalone.
-- `wrangler.jsonc` — staging Worker config (D1 binding; paste the database_id).
+- `seed.mjs` — embedded 40-risk baseline + settings used to seed an empty DB.
+- `migrations/` — SQL schema + seed (kept for reference; the worker self-seeds).
+- `public/index.html` — the front-end (mirrors `risk-taxonomy/tcf-risk-register.html`).
+- `wrangler.jsonc` — Worker config with the D1 binding.
 
-## Status
+## Status — ✅ DELIVERED (16 June 2026)
 - [x] Phase 0 — schema, seed, config
 - [x] Phase 1 — Worker API + server-side roles (logic unit-tested)
-- [ ] Phase 1 deploy — needs the D1 database created + bound (see below)
-- [ ] Phase 2 — front-end reads/writes the API
-- [ ] Phase 3 — live refresh + concurrency UX
-- [ ] Phase 4 — cutover
+- [x] Phase 1 deploy — D1 created + bound; worker live
+- [x] Phase 2 — front-end reads/writes the API (two-browser e2e tested)
+- [x] Phase 3 — live refresh (focus + 45s poll) + optimistic concurrency (409)
+- [x] Phase 4 — cutover: the live URL serves the database-backed register
 
-## One-time provisioning (repo owner)
-1. Create the database: `wrangler d1 create tcf-risk-register` (CLI) or the
-   Cloudflare dashboard → Storage & Databases → D1 → Create. Copy the **database_id**.
-2. Paste that id into `wrangler.jsonc` (`database_id`).
-3. Create a **new** Worker connected to this repo's `db-staging` branch with root
-   directory `db-app`, OR deploy from CLI: `cd db-app && wrangler deploy`.
-4. Apply migrations (the build command does this automatically; or run
-   `wrangler d1 migrations apply tcf-risk-register --remote`).
-5. Put the staging Worker behind Cloudflare Access (same as production:
-   Settings → Domains & Routes → Enable Cloudflare Access; policy = emails ending
-   `@churchillfellowship.org`).
+### As-built notes (for the autumn handover)
+- **Identity/permissions** are enforced server-side from the
+  `Cf-Access-Authenticated-User-Email` header, which Cloudflare sets at the edge
+  and a client cannot spoof **while the worker URL stays behind the Access
+  policy**. If Access is ever removed or the URL exposed, that protection is lost;
+  verifying the Access JWT (`Cf-Access-Jwt-Assertion`) is the hardening step.
+- **Build:** Cloudflare app `tcf-risk-register`, production branch `db-staging`,
+  path `/`, deploy command `npx wrangler deploy`; config at repo-root
+  `wrangler.jsonc`. The D1 database self-initialises and seeds on first request.
+- **Backup:** the in-app **Export** produces a full JSON snapshot at any time.
+- **Offline fallback:** opened as a local file (no API), the register reverts to
+  per-browser localStorage with the manual role picker.
 
 ## API (all behind Access; role derived from the signed-in email)
 - `GET /api/state` — risks, deleted, settings, and the caller's `{email, role}`

@@ -1,21 +1,9 @@
 {
-  // Database-backed register. This name matches the connected Cloudflare
-  // application (tcf-risk-register). For non-/api requests the Worker serves the
-  // existing UI unchanged, so the live page is unaffected until the Phase 2 swap.
   "name": "tcf-risk-register",
   "main": "worker.js",
   "compatibility_date": "2026-06-15",
-  "assets": {
-    "directory": "./public",
-    "binding": "ASSETS"
-  },
+  "assets": { "directory": "./public", "binding": "ASSETS" },
   "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "tcf-risk-register",
-      "database_id": "5694510a-a910-418d-a04b-4f171c7e2f92"
-    }
+    { "binding": "DB", "database_name": "tcf-risk-register", "database_id": "5694510a-a910-418d-a04b-4f171c7e2f92" }
   ]
-  // The database self-initialises on first request (see ensureInit in worker.js),
-  // so no migration build step is needed.
 }

@@ -1,19 +1,9 @@
 {
-  // Root-level config so the Cloudflare build works even with Root directory = "/".
-  // It points at the Worker living in db-app/. The database self-initialises on
-  // first request, so no build/migration step is required.
   "name": "tcf-risk-register",
   "main": "db-app/worker.js",
   "compatibility_date": "2026-06-15",
-  "assets": {
-    "directory": "db-app/public",
-    "binding": "ASSETS"
-  },
+  "assets": { "directory": "db-app/public", "binding": "ASSETS" },
   "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "tcf-risk-register",
-      "database_id": "5694510a-a910-418d-a04b-4f171c7e2f92"
-    }
+    { "binding": "DB", "database_name": "tcf-risk-register", "database_id": "5694510a-a910-418d-a04b-4f171c7e2f92" }
   ]
 }

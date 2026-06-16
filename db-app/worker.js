@@ -5,9 +5,28 @@ import {
   roleFor, isAdmin, canEditArea, COMMITTEES, EMAIL_TO_PERSON,
   decideSave, decideDelete, applyApprove, applyReject, applyFlag, applyClearFlag
 } from "./logic.mjs";
+import { SEED_RISKS, SEED_SETTINGS } from "./seed.mjs";
 
 const json = (obj, status=200) =>
   new Response(JSON.stringify(obj), {status, headers:{"content-type":"application/json", "cache-control":"no-store"}});
+
+// Create the schema and load the baseline once, on first use. Idempotent: the
+// schema uses IF NOT EXISTS and seeding only runs when the risks table is empty.
+async function ensureInit(env){
+  await env.DB.exec("CREATE TABLE IF NOT EXISTS risks (id TEXT PRIMARY KEY, committee TEXT, l2 TEXT, updated TEXT, pending_new INTEGER DEFAULT 0, data TEXT NOT NULL)");
+  await env.DB.exec("CREATE TABLE IF NOT EXISTS deleted (id TEXT PRIMARY KEY, deleted_at TEXT, data TEXT NOT NULL)");
+  await env.DB.exec("CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL)");
+  const cnt = await env.DB.prepare("SELECT COUNT(*) AS n FROM risks").first();
+  if(cnt && cnt.n > 0) return;
+  const stmts = [];
+  for(const r of SEED_RISKS){
+    stmts.push(env.DB.prepare(
+      "INSERT OR IGNORE INTO risks (id,committee,l2,updated,pending_new,data) VALUES (?,?,?,?,0,?)"
+    ).bind(r.id, r.com, r.l2, r.updated||"", JSON.stringify(r)));
+  }
+  stmts.push(env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('global',?)").bind(JSON.stringify(SEED_SETTINGS)));
+  await env.DB.batch(stmts);
+}
 
 // Cloudflare Access guarantees this header on every request to a protected hostname,
 // overwriting any client-supplied value at the edge, so it is safe to trust here.
@@ -39,6 +58,7 @@ async function nextId(env){
 }
 
 async function handleApi(req, env){
+  await ensureInit(env);
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/,"");
   const email = emailFromRequest(req);

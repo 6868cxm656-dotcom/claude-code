@@ -781,6 +781,45 @@ function loadState(){
 }
 function persist(){ store.set(LS_KEY, JSON.stringify({risks, deleted: deletedRisks, settings})); }
 
+/* ============ SHARED-DATABASE API LAYER ============ */
+/* When served by the Worker, the register reads/writes the shared D1 database via
+   /api and the server enforces permissions. When opened as a local file (no API),
+   apiMode stays false and the app falls back to per-browser localStorage. */
+let apiMode = false;
+async function apiCall(method, path, body){
+  const res = await fetch(path, {method, headers:{"content-type":"application/json"},
+    credentials:"include", body: body ? JSON.stringify(body) : undefined});
+  let data = {}; try{ data = await res.json(); }catch(e){}
+  return {ok:res.ok, status:res.status, data};
+}
+function applyMe(me){
+  role = me.role || "viewer";
+  const sel = document.getElementById("role"); if(sel) sel.style.display = "none";
+  const lab = document.getElementById("roleLabel"); if(lab) lab.style.display = "none";
+  const who = document.getElementById("whoami");
+  if(who){ who.style.display = "";
+    who.textContent = me.role && me.role!=="viewer"
+      ? `Signed in as ${me.role}${me.admin?" · all areas":" · edits own areas"}`
+      : `Signed in as ${me.email||"guest"} · view only`; }
+  document.getElementById("exportMineBtn").style.display = (role!=="viewer" && !isAdmin()) ? "" : "none";
+  document.getElementById("addBtn").style.display = (role==="viewer") ? "none" : "";
+  document.getElementById("settingsBtn").style.display = isAdmin() ? "" : "none";
+}
+async function refreshState(opts){
+  if(!apiMode) return;
+  opts = opts || {};
+  // don't clobber an open editor/settings panel unless forced (e.g. straight after a save)
+  if(!opts.force && (document.getElementById("overlay").classList.contains("open")
+      || document.getElementById("settingsOverlay").classList.contains("open"))) return;
+  try{
+    const {ok, data} = await apiCall("GET","/api/state");
+    if(!ok || !data.risks) return;
+    risks = data.risks; deletedRisks = data.deleted || []; settings = mergeSettings(data.settings);
+    if(data.me) applyMe(data.me);
+    renderAll();
+  }catch(e){}
+}
+
 /* ============ HELPERS ============ */
 // Risks visible in live views — excludes proposed-new risks awaiting QA.
 const PENDING_FIELDS = ["title","desc","l2","com","l","i","controls","actions","status","review","draft"];
@@ -830,14 +869,8 @@ function applyIdentity(email){
     : `Signed in as ${email} · view only`;
   setRole(role, true);
 }
-try{
-  if(window.fetch && location.protocol.startsWith("http")){
-    fetch("/cdn-cgi/access/get-identity", {credentials:"include"})
-      .then(r=> r.ok ? r.json() : null)
-      .then(d=>{ if(d && d.email) applyIdentity(d.email); })
-      .catch(()=>{});
-  }
-}catch(e){}
+// (Identity now comes from /api/state when the shared database is in use; the
+//  manual picker remains as the offline fallback. See init() at the foot.)
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 /* ============ SCORING RUBRIC ============ */
@@ -1304,16 +1337,24 @@ function recordRiskChange(r, changes){
   r.updated = new Date().toISOString();
   r.history = (r.history||[]).concat([{at:r.updated, by:role, changes}]);
 }
-function flagRisk(){
+async function flagRisk(){
   const r = risks.find(x=>x.id===editingId);
   if(!r || role==="viewer") return;
   const raw = prompt("Why does this risk need review? (sent to the owner)");
   if(raw===null) return;
   const note = raw.trim();
+  if(apiMode){
+    const {ok, data} = await apiCall("POST", "/api/risk/"+r.id+"/flag", {note});
+    if(!ok){ toast(data.error||"Could not flag."); return; }
+    closeModal(); await refreshState({force:true}); emailOwnerFlag(r, note); return;
+  }
   const flag = {by:role, at:new Date().toISOString(), note};
   recordRiskChange(r, [{f:"flag", from:r.flag||null, to:flag}]);
   r.flag = flag;
   persist(); renderAll(); closeModal();
+  emailOwnerFlag(r, note);
+}
+function emailOwnerFlag(r, note){
   // open a pre-addressed email to the owner
   const ownerName = ownerFirst(area(r).cat.owner);
   const to = (settings.emails[ownerName]||"").trim();
@@ -1326,10 +1367,15 @@ function flagRisk(){
   window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
   toast(to ? `Flagged — email to ${ownerName} opened.` : `Flagged. No email saved for ${ownerName} — add it under ⚙ Meetings & contacts.`);
 }
-function clearFlag(){
+async function clearFlag(){
   const r = risks.find(x=>x.id===editingId);
   if(!r || !r.flag) return;
   if(!canEdit(r) && r.flag.by!==role){ toast("Only the owner, an admin, or the flagger can clear a flag."); return; }
+  if(apiMode){
+    const {ok, data} = await apiCall("POST", "/api/risk/"+r.id+"/clearflag", {});
+    if(!ok){ toast(data.error||"Could not clear flag."); return; }
+    closeModal(); await refreshState({force:true}); toast("Flag cleared."); return;
+  }
   recordRiskChange(r, [{f:"flag", from:r.flag, to:null}]);
   r.flag = null;
   persist(); renderAll(); closeModal(); toast("Flag cleared.");
@@ -1344,7 +1390,7 @@ function nextId(){
   risks.concat(deletedRisks).forEach(r=>{ const m = /^R(\d+)$/.exec(r.id); if(m) n = Math.max(n, +m[1]); });
   return "R" + String(n+1).padStart(2,"0");
 }
-function saveRisk(){
+async function saveRisk(){
   const title = document.getElementById("mRiskTitle").value.trim();
   if(!title){ toast("Give the risk a title."); return; }
   const prevRisk = editingId ? risks.find(r=>r.id===editingId) : null;
@@ -1365,6 +1411,23 @@ function saveRisk(){
   };
   if(!canEditArea(obj.l2)){ toast("You can only save risks in your own areas."); return; }
   const admin = isAdmin();
+  if(apiMode){
+    let note = "";
+    if(!admin){ note = (prompt(editingId ? "Optional note for Jim/Julia explaining this change:"
+                                          : "Optional note for Jim/Julia explaining this new risk:") || "").trim(); }
+    const payload = {...obj}; if(!editingId) delete payload.id;   // let the server assign new ids
+    const {ok, status, data} = await apiCall("POST", "/api/risk",
+      {risk:payload, baseUpdated: prevRisk ? prevRisk.updated : undefined, note});
+    if(!ok){
+      if(status===409){ toast("This risk changed since you opened it — reloading."); closeModal(); await refreshState({force:true}); return; }
+      toast(data.error || "Could not save."); return;
+    }
+    closeModal(); await refreshState({force:true});
+    if(data.proposal){ notifyAdmins(data.risk, editingId ? "edit" : "new", note);
+      toast(editingId ? "Change proposed — sent to Jim/Julia for QA." : "New risk proposed — sent to Jim/Julia for QA."); }
+    else toast(`${data.risk.id} saved (live).`);
+    return;
+  }
   const idx = risks.findIndex(r=>r.id===obj.id);
   if(idx>=0){
     const prev = risks[idx];
@@ -1406,9 +1469,23 @@ function saveRisk(){
     }
   }
 }
-function deleteRisk(){
+async function deleteRisk(){
   const r = risks.find(x=>x.id===editingId);
   if(!r) return;
+  if(apiMode){
+    const admin = isAdmin();
+    const isOwnNew = r.pending && r.pending.kind==="new" && r.pending.by===role;
+    if(admin && !confirm(`Delete ${r.id} — “${r.title}”? This removes it for everyone.`)) return;
+    let note = "";
+    if(!admin && !isOwnNew){ note = (prompt("Propose deletion of this risk — note for Jim/Julia:") || "").trim(); }
+    const {ok, data} = await apiCall("DELETE", "/api/risk/"+r.id, {note});
+    if(!ok){ toast(data.error||"Could not delete."); return; }
+    closeModal(); await refreshState({force:true});
+    if(data.deleted) toast("Risk deleted (live).");
+    else if(data.withdrawn) toast("Proposed risk withdrawn.");
+    else { notifyAdmins(data.risk, "delete", note); toast("Deletion proposed — sent to Jim/Julia for QA."); }
+    return;
+  }
   if(isAdmin()){
     if(!confirm(`Delete ${r.id} — “${r.title}”? This only affects your local copy until you export/share.`)) return;
     deletedRisks = deletedRisks.filter(d=>d.id!==r.id);
@@ -1487,9 +1564,14 @@ function renderApprovals(){
       ${acts}</div>`;
   }).join("");
 }
-function approveProposal(id){
+async function approveProposal(id){
   if(!isAdmin()) return;
   const r = risks.find(x=>x.id===id); if(!r||!r.pending) return;
+  if(apiMode){
+    const {ok, data} = await apiCall("POST", "/api/proposal/"+id+"/approve", {});
+    if(!ok){ toast(data.error||"Could not approve."); return; }
+    await refreshState({force:true}); toast(`${id} approved — now live.`); return;
+  }
   const p = r.pending, now = new Date().toISOString();
   if(p.kind==="delete"){
     r.history = (r.history||[]).concat([{at:now, by:role, note:`Deletion proposed by ${p.by} approved`}]);
@@ -1508,11 +1590,16 @@ function approveProposal(id){
   }
   persist(); renderAll(); toast(`${id} approved — now live.`);
 }
-function rejectProposal(id){
+async function rejectProposal(id){
   if(!isAdmin()) return;
   const r = risks.find(x=>x.id===id); if(!r||!r.pending) return;
   const reason = prompt("Reason for rejecting (for the proposer):");
   if(reason===null) return;
+  if(apiMode){
+    const {ok, data} = await apiCall("POST", "/api/proposal/"+id+"/reject", {reason});
+    if(!ok){ toast(data.error||"Could not reject."); return; }
+    await refreshState({force:true}); toast("Proposal rejected."); return;
+  }
   const p = r.pending, now = new Date().toISOString();
   if(p.kind==="new"){
     risks = risks.filter(x=>x.id!==id);                  // never went live — discard
@@ -1538,13 +1625,18 @@ function openSettings(){
   document.getElementById("settingsOverlay").classList.add("open");
 }
 function closeSettings(){ document.getElementById("settingsOverlay").classList.remove("open"); }
-function saveSettings(){
+async function saveSettings(){
   Object.keys(COMMITTEES).forEach(c=>{
     settings.schedules[c] = (document.getElementById("setM-"+c).value || "")
       .split("\n").map(s=>s.trim()).filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s)).sort();
   });
   PEOPLE.forEach(p=>{ settings.emails[p] = document.getElementById("setE-"+p).value.trim(); });
   settings.updated = new Date().toISOString();
+  if(apiMode){
+    const {ok, data} = await apiCall("PUT", "/api/settings", {settings});
+    if(!ok){ toast(data.error||"Could not save settings."); return; }
+    closeSettings(); await refreshState({force:true}); toast("Settings saved."); return;
+  }
   persist(); closeSettings(); renderAll(); toast("Settings saved.");
 }
 
@@ -1673,6 +1765,7 @@ function reconcilePending(ours, theirs){
   return (cand.at||"") >= newestApplied ? cand : null;
 }
 function importJSON(input){
+  if(apiMode){ toast("On the shared database the register syncs automatically — import is only for offline file copies."); input.value=""; return; }
   const f = input.files[0]; if(!f) return;
   const rd = new FileReader();
   rd.onload = () => {
@@ -1741,6 +1834,7 @@ function exportCSV(){
   toast("CSV exported.");
 }
 function resetBaseline(){
+  if(apiMode){ toast("Reset is disabled on the shared database. Use Export for a backup."); return; }
   if(!confirm("Replace all local data with the original baseline draft risks? This also clears all change history. Export first if you have edits to keep.")) return;
   risks = JSON.parse(JSON.stringify(BASELINE_RISKS));
   deletedRisks = [];
@@ -1759,8 +1853,29 @@ function renderAll(){ renderDashboard(); renderRegister(); renderTaxonomy(); ren
 populateFilters();
 renderRubric("rubricOverview");
 renderRubric("rubricModal");
-document.getElementById("role").value = role;
-setRole(role);
+
+async function init(){
+  // Prefer the shared database (served by the Worker). Fall back to the local
+  // per-browser copy when opened as a standalone file.
+  if(window.fetch && location.protocol.startsWith("http")){
+    try{
+      const {ok, data} = await apiCall("GET", "/api/state");
+      if(ok && data && Array.isArray(data.risks)){
+        apiMode = true;
+        risks = data.risks; deletedRisks = data.deleted || []; settings = mergeSettings(data.settings);
+        applyMe(data.me || {role:"viewer", admin:false, email:""});
+        renderAll();
+        // keep everyone roughly in sync: refresh on focus and on a light poll
+        window.addEventListener("focus", ()=>refreshState());
+        setInterval(()=>refreshState(), 45000);
+        return;
+      }
+    }catch(e){}
+  }
+  document.getElementById("role").value = role;
+  setRole(role);
+}
+init();
 </script>
 </body>
 </html>

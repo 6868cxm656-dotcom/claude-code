@@ -1,7 +1,9 @@
 # Plan: move the TCF Risk Register to a shared database
 
-**Status:** proposed for approval · **Date:** 13 June 2026
-**Author:** drafted by Claude (AI) for SLT/COO review
+**Status:** ✅ DELIVERED — all phases shipped and verified in production (16 June 2026).
+The register runs on Cloudflare D1 behind the Worker, with server-enforced
+permissions, live multi-user sync, and the offline file as a fallback/snapshot.
+**Date:** 13 June 2026 · **Author:** drafted by Claude (AI) for SLT/COO review
 
 ## 1. Goal
 

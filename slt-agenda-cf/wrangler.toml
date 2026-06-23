@@ -7,4 +7,4 @@ pages_build_output_dir = "public"
 [[d1_databases]]
 binding = "DB"
 database_name = "slt-agenda"
-database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+database_id = "453cd604-5be6-4d5a-9dfc-5f2be5884d41"

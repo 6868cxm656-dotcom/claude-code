@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SLT Agenda — Senior Leadership Team</title>
+<meta name="description" content="A lightweight weekly agenda planner for senior leadership team meetings." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ground: #EDF0F3;
+    --panel: #FBFCFD;
+    --text: #15212E;
+    --muted: #5C6B7A;
+    --line: #D5DCE3;
+    --line-soft: #E4E9EE;
+    --accent: #B5762B;        /* heritage brass — the live / key moment */
+    --accent-soft: #F3E7D2;
+    --teal: #2C6E6B;          /* decisions */
+    --teal-soft: #DCEAE8;
+    --over: #A23B2D;          /* over capacity */
+    --shadow: 0 1px 2px rgba(21, 33, 46, .06), 0 8px 24px rgba(21, 33, 46, .06);
+
+    --serif: "Newsreader", Georgia, serif;
+    --sans: "Inter", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; }
+
+  body {
+    background: var(--ground);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- layout shell ---- */
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 28px 24px 96px;
+  }
+
+  /* ---- header ---- */
+  .masthead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px 24px;
+    padding-bottom: 18px;
+    border-bottom: 2px solid var(--text);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 6px;
+  }
+  .title-input {
+    font-family: var(--serif);
+    font-size: clamp(28px, 5vw, 40px);
+    font-weight: 500;
+    line-height: 1.05;
+    letter-spacing: -.01em;
+    color: var(--text);
+    border: 0;
+    background: transparent;
+    padding: 0;
+    width: 100%;
+    max-width: 540px;
+  }
+  .title-input:focus { outline: none; box-shadow: 0 2px 0 var(--accent); }
+
+  .meta {
+    display: flex;
+    gap: 18px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .field label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .field input {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 9px;
+    width: 130px;
+  }
+  .field input:focus { outline: none; border-color: var(--accent); }
+  .field input.short { width: 84px; }
+
+  /* ---- capacity meter ---- */
+  .capacity {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .gauge {
+    flex: 1;
+    height: 8px;
+    background: var(--line-soft);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .gauge-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 99px;
+    transition: width .35s ease, background-color .35s ease;
+  }
+  .gauge-fill.over { background: var(--over); }
+  .capacity-read {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .capacity-read b { color: var(--text); font-weight: 600; }
+  .capacity-read .flag-over { color: var(--over); font-weight: 600; }
+  .capacity-read .flag-room { color: var(--teal); font-weight: 600; }
+
+  /* ---- toolbar ---- */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 22px 0 18px;
+  }
+  button {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 8px 13px;
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease;
+  }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary {
+    background: var(--text);
+    color: var(--ground);
+    border-color: var(--text);
+  }
+  button.primary:hover { background: #0c1620; }
+  .toolbar .spacer { flex: 1; }
+
+  /* ---- agenda list ---- */
+  .agenda { list-style: none; margin: 0; padding: 0; }
+
+  .item {
+    display: grid;
+    grid-template-columns: 78px 1fr;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+    overflow: hidden;
+    transition: box-shadow .15s ease, opacity .15s ease;
+  }
+  .item.dragging { opacity: .45; }
+  .item.drop-target { box-shadow: 0 0 0 2px var(--accent); }
+  .item.done .item-title { text-decoration: line-through; color: var(--muted); }
+  .item.carry { border-left: 3px solid var(--accent); }
+
+  /* time gutter — the departure board */
+  .gutter {
+    background: linear-gradient(180deg, #F4F6F8, #EEF1F4);
+    border-right: 1px solid var(--line-soft);
+    padding: 14px 10px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .gutter .clock {
+    font-family: var(--mono);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: .01em;
+    color: var(--text);
+  }
+  .gutter .dur-wrap {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 1px;
+    margin-top: 2px;
+  }
+  .gutter .dur {
+    font-family: var(--mono);
+    font-size: 12px;
+    width: 30px;
+    text-align: right;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 0;
+  }
+  .gutter .dur:focus { outline: none; color: var(--accent); box-shadow: 0 1px 0 var(--accent); }
+  .gutter .dur-unit { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+  /* body of an item */
+  .body { padding: 12px 14px 13px; }
+  .row-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .item-title {
+    flex: 1;
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text);
+    border: 0;
+    background: transparent;
+    padding: 2px 0;
+    line-height: 1.25;
+  }
+  .item-title:focus { outline: none; box-shadow: 0 1px 0 var(--line); }
+
+  .owner {
+    font-family: var(--mono);
+    font-size: 12px;
+    text-align: center;
+    width: 52px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted);
+    border: 1px solid var(--line-soft);
+    border-radius: 6px;
+    padding: 5px 4px;
+    background: var(--ground);
+  }
+  .owner:focus { outline: none; border-color: var(--accent); color: var(--text); }
+
+  .type-select {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-weight: 500;
+    border: 1px solid var(--line-soft);
+    border-radius: 99px;
+    padding: 5px 10px;
+    background: var(--ground);
+    color: var(--muted);
+    cursor: pointer;
+    appearance: none;
+  }
+  .type-select:focus { outline: none; border-color: var(--accent); }
+  .type-decision { background: var(--teal-soft); color: var(--teal); border-color: transparent; }
+  .type-update   { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .type-discussion { background: #E5E9ED; color: #41546A; border-color: transparent; }
+  .type-info { background: var(--ground); color: var(--muted); }
+
+  .notes {
+    width: 100%;
+    margin-top: 8px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.55;
+    border: 0;
+    border-top: 1px dashed var(--line-soft);
+    background: transparent;
+    padding: 8px 0 0;
+    resize: vertical;
+    min-height: 0;
+    height: 24px;
+    overflow: hidden;
+  }
+  .notes::placeholder { color: #9AA7B4; }
+  .notes:focus { outline: none; }
+
+  /* actions */
+  .actions-block { margin-top: 8px; }
+  .action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+  }
+  .action input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; flex: none; }
+  .action .act-text {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    font-size: 13.5px;
+    color: var(--text);
+    padding: 2px 0;
+  }
+  .action .act-text:focus { outline: none; box-shadow: 0 1px 0 var(--line); }
+  .action.done .act-text { text-decoration: line-through; color: var(--muted); }
+  .action .act-owner {
+    width: 46px;
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    text-align: center;
+    color: var(--muted);
+    border: 1px solid var(--line-soft);
+    border-radius: 5px;
+    padding: 2px;
+    background: var(--ground);
+  }
+  .action .act-owner:focus { outline: none; border-color: var(--accent); }
+  .act-remove {
+    border: 0; background: transparent; color: #9AA7B4; cursor: pointer;
+    font-size: 16px; line-height: 1; padding: 2px 4px;
+  }
+  .act-remove:hover { color: var(--over); }
+  .add-action {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: transparent;
+    border: 0;
+    padding: 4px 0;
+    cursor: pointer;
+  }
+  .add-action:hover { text-decoration: underline; }
+
+  /* item controls (right edge) */
+  .item-ctrls { display: flex; gap: 2px; flex: none; }
+  .ictrl {
+    border: 0; background: transparent; cursor: pointer;
+    color: #9AA7B4; padding: 4px; border-radius: 5px;
+    font-size: 15px; line-height: 1;
+  }
+  .ictrl:hover { background: var(--ground); color: var(--text); }
+  .ictrl.on { color: var(--accent); }
+  .ictrl.handle { cursor: grab; }
+  .ictrl.handle:active { cursor: grabbing; }
+
+  /* tags row */
+  .tags-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 9px;
+    flex-wrap: wrap;
+  }
+  .standing-pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px dashed var(--accent);
+    border-radius: 99px;
+    padding: 2px 8px;
+  }
+
+  /* empty state */
+  .empty {
+    text-align: center;
+    padding: 48px 20px;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    color: var(--muted);
+    background: var(--panel);
+  }
+  .empty h2 { font-family: var(--serif); font-weight: 500; color: var(--text); margin: 0 0 6px; }
+
+  /* footer note */
+  .footnote {
+    margin-top: 26px;
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .footnote code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: var(--panel);
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  .save-state {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    align-self: center;
+    margin-left: auto;
+  }
+
+  /* toast */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translate(-50%, 20px);
+    background: var(--text);
+    color: var(--ground);
+    font-size: 13.5px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+    z-index: 50;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 560px) {
+    .item { grid-template-columns: 62px 1fr; }
+    .meta { width: 100%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  /* ---- print: clean agenda / minutes ---- */
+  @media print {
+    body { background: #fff; }
+    .toolbar, .item-ctrls, .add-action, .act-remove, .footnote, .save-state, .toast { display: none !important; }
+    .wrap { max-width: 100%; padding: 0; }
+    .item { box-shadow: none; break-inside: avoid; border-color: #ccc; }
+    .gauge { display: none; }
+  }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Churchill Fellowship · Weekly</p>
+        <input class="title-input" id="mtgTitle" aria-label="Meeting title" />
+      </div>
+      <div class="meta">
+        <div class="field">
+          <label for="mtgDate">Date</label>
+          <input type="date" id="mtgDate" />
+        </div>
+        <div class="field">
+          <label for="mtgStart">Starts</label>
+          <input type="time" id="mtgStart" class="short" />
+        </div>
+        <div class="field">
+          <label for="mtgTarget">Length (min)</label>
+          <input type="number" id="mtgTarget" class="short" min="5" step="5" />
+        </div>
+      </div>
+    </header>
+
+    <div class="capacity">
+      <div class="gauge"><div class="gauge-fill" id="gaugeFill"></div></div>
+      <div class="capacity-read" id="capacityRead"></div>
+    </div>
+
+    <div class="toolbar">
+      <button class="primary" id="btnAdd">+ Add item</button>
+      <button id="btnRoll">Roll forward to next week</button>
+      <span class="spacer"></span>
+      <button id="btnOpen">Open…</button>
+      <button id="btnSave">Save to file</button>
+      <button id="btnCopy">Copy for email</button>
+      <button id="btnPrint">Print / PDF</button>
+      <span class="save-state" id="saveState"></span>
+    </div>
+
+    <ul class="agenda" id="agenda"></ul>
+
+    <p class="footnote" id="footnote"></p>
+  </main>
+
+  <input type="file" id="fileInput" accept="application/json,.json" hidden />
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORE_KEY = "slt-agenda-v1";
+  var TYPES = ["update", "decision", "discussion", "info"];
+  var TYPE_LABEL = { update: "Update", decision: "Decision", discussion: "Discussion", info: "Info" };
+
+  // ---------- state ----------
+  var state = load() || seed();
+
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  function seed() {
+    return {
+      title: "Senior Leadership Team",
+      date: nextWeekday(),
+      start: "09:00",
+      target: 60,
+      items: [
+        mkItem("Welcome & check-in", "info", 5, "", true),
+        mkItem("Fellowship programme update", "update", 10, "", true),
+        mkItem("2026 grant round — timeline & criteria", "decision", 15, ""),
+        mkItem("External profile & comms", "discussion", 10, ""),
+        mkItem("Finance & reserves position", "update", 10, "", true),
+        mkItem("Actions review & AOB", "info", 10, "", true)
+      ]
+    };
+  }
+
+  function mkItem(title, type, minutes, owner, standing) {
+    return {
+      id: uid(), title: title, type: type, minutes: minutes,
+      owner: owner || "", notes: "", status: "todo",
+      standing: !!standing, actions: []
+    };
+  }
+
+  function nextWeekday() {
+    var d = new Date();
+    d.setDate(d.getDate() + 1);
+    var day = d.getDay();
+    if (day === 6) d.setDate(d.getDate() + 2);
+    if (day === 0) d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // ---------- persistence ----------
+  var saveTimer;
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify(state));
+        flagSaved("Saved in this browser");
+      } catch (e) { flagSaved("Couldn't auto-save"); }
+    }, 250);
+  }
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function flagSaved(msg) {
+    var el = document.getElementById("saveState");
+    el.textContent = msg + " · " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  // ---------- time helpers ----------
+  function parseHM(hm) {
+    var p = (hm || "09:00").split(":");
+    return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
+  }
+  function fmtHM(mins) {
+    mins = ((mins % 1440) + 1440) % 1440;
+    var h = Math.floor(mins / 60), m = mins % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+  function totalMinutes() {
+    return state.items.reduce(function (s, it) { return s + (parseInt(it.minutes, 10) || 0); }, 0);
+  }
+
+  // ---------- rendering ----------
+  var agendaEl = document.getElementById("agenda");
+
+  function render() {
+    document.getElementById("mtgTitle").value = state.title;
+    document.getElementById("mtgDate").value = state.date;
+    document.getElementById("mtgStart").value = state.start;
+    document.getElementById("mtgTarget").value = state.target;
+
+    agendaEl.innerHTML = "";
+    if (!state.items.length) {
+      var empty = document.createElement("li");
+      empty.className = "empty";
+      empty.innerHTML = "<h2>No items yet</h2><div>Add your first agenda item to start building the running order.</div>";
+      agendaEl.appendChild(empty);
+    } else {
+      state.items.forEach(function (it) { agendaEl.appendChild(renderItem(it)); });
+    }
+    recalc();
+    updateFootnote();
+  }
+
+  function renderItem(it) {
+    var li = document.createElement("li");
+    li.className = "item" + (it.status === "done" ? " done" : "") + (it.status === "carry" ? " carry" : "");
+    li.dataset.id = it.id;
+    li.setAttribute("draggable", "false");
+
+    // gutter
+    var gutter = document.createElement("div");
+    gutter.className = "gutter";
+    var clock = document.createElement("div");
+    clock.className = "clock";
+    clock.dataset.clock = it.id;
+    gutter.appendChild(clock);
+
+    var durWrap = document.createElement("div");
+    durWrap.className = "dur-wrap";
+    var dur = document.createElement("input");
+    dur.className = "dur";
+    dur.type = "number";
+    dur.min = "0"; dur.step = "5";
+    dur.value = it.minutes;
+    dur.setAttribute("aria-label", "Minutes for " + (it.title || "item"));
+    dur.addEventListener("input", function () {
+      it.minutes = clampInt(dur.value, 0, 600);
+      recalc(); save();
+    });
+    var unit = document.createElement("span");
+    unit.className = "dur-unit";
+    unit.textContent = "m";
+    durWrap.appendChild(dur); durWrap.appendChild(unit);
+    gutter.appendChild(durWrap);
+
+    // body
+    var body = document.createElement("div");
+    body.className = "body";
+
+    var rowTop = document.createElement("div");
+    rowTop.className = "row-top";
+
+    var title = document.createElement("input");
+    title.className = "item-title";
+    title.value = it.title;
+    title.placeholder = "Agenda item…";
+    title.setAttribute("aria-label", "Item title");
+    title.addEventListener("input", function () { it.title = title.value; save(); });
+
+    var owner = document.createElement("input");
+    owner.className = "owner";
+    owner.value = it.owner;
+    owner.maxLength = 6;
+    owner.placeholder = "—";
+    owner.title = "Owner (initials)";
+    owner.setAttribute("aria-label", "Owner");
+    owner.addEventListener("input", function () { it.owner = owner.value; save(); });
+
+    var ctrls = document.createElement("div");
+    ctrls.className = "item-ctrls";
+    ctrls.appendChild(iconBtn(it.status === "done" ? "✓" : "○", "Mark done", it.status === "done", function () {
+      it.status = it.status === "done" ? "todo" : "done"; render(); save();
+    }));
+    ctrls.appendChild(iconBtn("↦", "Carry to next week", it.status === "carry", function () {
+      it.status = it.status === "carry" ? "todo" : "carry"; render(); save();
+    }));
+    ctrls.appendChild(iconBtn("⤴", it.standing ? "Standing item (kept each week)" : "Make standing item", it.standing, function () {
+      it.standing = !it.standing; render(); save();
+    }));
+    ctrls.appendChild(iconBtn("✕", "Delete item", false, function () {
+      state.items = state.items.filter(function (x) { return x.id !== it.id; });
+      render(); save();
+    }));
+    var handle = iconBtn("⠿", "Drag to reorder", false, null);
+    handle.classList.add("handle");
+    attachDrag(handle, li, it);
+    ctrls.appendChild(handle);
+
+    rowTop.appendChild(title);
+    rowTop.appendChild(owner);
+    rowTop.appendChild(ctrls);
+    body.appendChild(rowTop);
+
+    // tags row: type + standing pill
+    var tags = document.createElement("div");
+    tags.className = "tags-row";
+    var sel = document.createElement("select");
+    sel.className = "type-select type-" + it.type;
+    TYPES.forEach(function (t) {
+      var o = document.createElement("option");
+      o.value = t; o.textContent = TYPE_LABEL[t];
+      if (t === it.type) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.setAttribute("aria-label", "Item type");
+    sel.addEventListener("change", function () {
+      it.type = sel.value;
+      sel.className = "type-select type-" + it.type;
+      save();
+    });
+    tags.appendChild(sel);
+    if (it.standing) {
+      var pill = document.createElement("span");
+      pill.className = "standing-pill";
+      pill.textContent = "Standing";
+      tags.appendChild(pill);
+    }
+    body.appendChild(tags);
+
+    // notes
+    var notes = document.createElement("textarea");
+    notes.className = "notes";
+    notes.value = it.notes;
+    notes.placeholder = "Notes, context, decisions taken…";
+    notes.setAttribute("aria-label", "Notes");
+    notes.addEventListener("input", function () { it.notes = notes.value; autoGrow(notes); save(); });
+    body.appendChild(notes);
+    requestAnimationFrame(function () { autoGrow(notes); });
+
+    // actions
+    var ab = document.createElement("div");
+    ab.className = "actions-block";
+    (it.actions || []).forEach(function (act) { ab.appendChild(renderAction(it, act)); });
+    var addAct = document.createElement("button");
+    addAct.className = "add-action";
+    addAct.textContent = "+ Action";
+    addAct.addEventListener("click", function () {
+      it.actions = it.actions || [];
+      var a = { id: uid(), text: "", owner: "", done: false };
+      it.actions.push(a);
+      ab.insertBefore(renderAction(it, a), addAct);
+      save();
+    });
+    ab.appendChild(addAct);
+    body.appendChild(ab);
+
+    li.appendChild(gutter);
+    li.appendChild(body);
+    return li;
+  }
+
+  function renderAction(it, act) {
+    var row = document.createElement("div");
+    row.className = "action" + (act.done ? " done" : "");
+    var cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = act.done;
+    cb.setAttribute("aria-label", "Action done");
+    cb.addEventListener("change", function () {
+      act.done = cb.checked; row.classList.toggle("done", act.done); save();
+    });
+    var txt = document.createElement("input");
+    txt.className = "act-text"; txt.value = act.text; txt.placeholder = "Action…";
+    txt.addEventListener("input", function () { act.text = txt.value; save(); });
+    var own = document.createElement("input");
+    own.className = "act-owner"; own.value = act.owner; own.maxLength = 6; own.placeholder = "—";
+    own.title = "Owner";
+    own.addEventListener("input", function () { act.owner = own.value; save(); });
+    var rm = document.createElement("button");
+    rm.className = "act-remove"; rm.textContent = "×"; rm.title = "Remove action";
+    rm.addEventListener("click", function () {
+      it.actions = it.actions.filter(function (x) { return x.id !== act.id; });
+      row.remove(); save();
+    });
+    row.appendChild(cb); row.appendChild(txt); row.appendChild(own); row.appendChild(rm);
+    return row;
+  }
+
+  function iconBtn(glyph, title, on, fn) {
+    var b = document.createElement("button");
+    b.className = "ictrl" + (on ? " on" : "");
+    b.textContent = glyph;
+    b.title = title;
+    b.setAttribute("aria-label", title);
+    if (fn) b.addEventListener("click", fn);
+    return b;
+  }
+
+  function autoGrow(ta) {
+    ta.style.height = "24px";
+    if (ta.value) ta.style.height = ta.scrollHeight + "px";
+  }
+
+  // ---------- recalc times + capacity (no re-render, keeps focus) ----------
+  function recalc() {
+    var t = parseHM(state.start);
+    state.items.forEach(function (it) {
+      var node = agendaEl.querySelector('[data-clock="' + it.id + '"]');
+      if (node) node.textContent = fmtHM(t);
+      t += parseInt(it.minutes, 10) || 0;
+    });
+    var total = totalMinutes();
+    var target = parseInt(state.target, 10) || 0;
+    var pct = target ? Math.min(100, Math.round((total / target) * 100)) : 0;
+    var fill = document.getElementById("gaugeFill");
+    fill.style.width = pct + "%";
+    fill.classList.toggle("over", total > target);
+
+    var read = document.getElementById("capacityRead");
+    var ends = fmtHM(parseHM(state.start) + total);
+    var diff = total - target;
+    var tail;
+    if (diff > 0) tail = '<span class="flag-over">' + diff + " min over</span>";
+    else if (diff < 0) tail = '<span class="flag-room">' + (-diff) + " min spare</span>";
+    else tail = '<span class="flag-room">on time</span>';
+    read.innerHTML = "<b>" + total + "</b> of <b>" + target + "</b> min planned · ends <b>" + ends + "</b> · " + tail;
+  }
+
+  function updateFootnote() {
+    document.getElementById("footnote").innerHTML =
+      "Everything auto-saves in this browser. To share with the team, use <b>Save to file</b> and keep the " +
+      "<code>.json</code> on your shared drive — anyone can <b>Open…</b> it, edit, and save it back. " +
+      "<b>Roll forward</b> starts next week's agenda, keeping standing items and anything marked to carry.";
+  }
+
+  // ---------- drag & drop reorder ----------
+  var dragId = null;
+  function attachDrag(handle, li, it) {
+    handle.addEventListener("mousedown", function () { li.setAttribute("draggable", "true"); });
+    handle.addEventListener("mouseup", function () { li.setAttribute("draggable", "false"); });
+    li.addEventListener("dragstart", function (e) {
+      dragId = it.id; li.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", it.id); } catch (err) {}
+    });
+    li.addEventListener("dragend", function () {
+      li.classList.remove("dragging"); li.setAttribute("draggable", "false");
+      Array.prototype.forEach.call(agendaEl.children, function (c) { c.classList.remove("drop-target"); });
+      dragId = null;
+    });
+    li.addEventListener("dragover", function (e) {
+      e.preventDefault();
+      if (dragId && dragId !== it.id) li.classList.add("drop-target");
+    });
+    li.addEventListener("dragleave", function () { li.classList.remove("drop-target"); });
+    li.addEventListener("drop", function (e) {
+      e.preventDefault();
+      li.classList.remove("drop-target");
+      if (!dragId || dragId === it.id) return;
+      var from = state.items.findIndex(function (x) { return x.id === dragId; });
+      var to = state.items.findIndex(function (x) { return x.id === it.id; });
+      if (from < 0 || to < 0) return;
+      var moved = state.items.splice(from, 1)[0];
+      state.items.splice(to, 0, moved);
+      render(); save();
+    });
+  }
+
+  function clampInt(v, lo, hi) {
+    v = parseInt(v, 10); if (isNaN(v)) v = 0;
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  // ---------- header inputs ----------
+  document.getElementById("mtgTitle").addEventListener("input", function (e) { state.title = e.target.value; save(); });
+  document.getElementById("mtgDate").addEventListener("input", function (e) { state.date = e.target.value; updateExportName(); save(); });
+  document.getElementById("mtgStart").addEventListener("input", function (e) { state.start = e.target.value; recalc(); save(); });
+  document.getElementById("mtgTarget").addEventListener("input", function (e) { state.target = clampInt(e.target.value, 0, 600); recalc(); save(); });
+
+  // ---------- toolbar actions ----------
+  document.getElementById("btnAdd").addEventListener("click", function () {
+    state.items.push(mkItem("", "discussion", 10, ""));
+    render(); save();
+    var last = agendaEl.querySelector(".item:last-child .item-title");
+    if (last) last.focus();
+  });
+
+  document.getElementById("btnRoll").addEventListener("click", function () {
+    var kept = state.items
+      .filter(function (it) { return it.standing || it.status === "carry"; })
+      .map(function (it) {
+        var openActions = (it.actions || []).filter(function (a) { return !a.done; })
+          .map(function (a) { return { id: uid(), text: a.text, owner: a.owner, done: false }; });
+        return {
+          id: uid(), title: it.title, type: it.type, minutes: it.minutes,
+          owner: it.owner, notes: "", status: "todo",
+          standing: it.standing, actions: openActions
+        };
+      });
+    var d = new Date(state.date + "T00:00:00");
+    d.setDate(d.getDate() + 7);
+    state = {
+      title: state.title,
+      date: d.toISOString().slice(0, 10),
+      start: state.start,
+      target: state.target,
+      items: kept.length ? kept : [mkItem("Welcome & check-in", "info", 5, "", true)]
+    };
+    render(); save();
+    toast("Rolled forward to " + formatDate(state.date) + " · kept " + kept.length + " item(s)");
+  });
+
+  document.getElementById("btnSave").addEventListener("click", function () {
+    var blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = exportName() + ".json";
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    toast("Saved " + a.download);
+  });
+
+  document.getElementById("btnOpen").addEventListener("click", function () {
+    document.getElementById("fileInput").click();
+  });
+  document.getElementById("fileInput").addEventListener("change", function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var data = JSON.parse(reader.result);
+        if (!data || !Array.isArray(data.items)) throw new Error("bad");
+        state = normalise(data);
+        render(); save();
+        toast("Opened " + file.name);
+      } catch (err) {
+        toast("That file isn't a valid agenda");
+      }
+      e.target.value = "";
+    };
+    reader.readAsText(file);
+  });
+
+  document.getElementById("btnCopy").addEventListener("click", function () {
+    var md = toMarkdown();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(md).then(
+        function () { toast("Agenda copied — paste into your email"); },
+        function () { fallbackCopy(md); }
+      );
+    } else { fallbackCopy(md); }
+  });
+
+  document.getElementById("btnPrint").addEventListener("click", function () { window.print(); });
+
+  // ---------- export helpers ----------
+  function normalise(data) {
+    return {
+      title: data.title || "Senior Leadership Team",
+      date: data.date || nextWeekday(),
+      start: data.start || "09:00",
+      target: parseInt(data.target, 10) || 60,
+      items: (data.items || []).map(function (it) {
+        return {
+          id: it.id || uid(),
+          title: it.title || "",
+          type: TYPES.indexOf(it.type) >= 0 ? it.type : "discussion",
+          minutes: parseInt(it.minutes, 10) || 0,
+          owner: it.owner || "",
+          notes: it.notes || "",
+          status: ["todo", "done", "carry"].indexOf(it.status) >= 0 ? it.status : "todo",
+          standing: !!it.standing,
+          actions: (it.actions || []).map(function (a) {
+            return { id: a.id || uid(), text: a.text || "", owner: a.owner || "", done: !!a.done };
+          })
+        };
+      })
+    };
+  }
+
+  function exportName() {
+    return "SLT-agenda-" + (state.date || "draft");
+  }
+  function updateExportName() {}
+
+  function toMarkdown() {
+    var lines = [];
+    lines.push(state.title + " — Agenda");
+    lines.push(formatDate(state.date) + " · " + state.start + " · " + totalMinutes() + " min planned");
+    lines.push("");
+    var t = parseHM(state.start);
+    state.items.forEach(function (it, i) {
+      var time = fmtHM(t); t += parseInt(it.minutes, 10) || 0;
+      var who = it.owner ? " (" + it.owner + ")" : "";
+      var mark = it.status === "done" ? "✓ " : (it.status === "carry" ? "↦ " : "");
+      lines.push((i + 1) + ". " + time + " · " + mark + (it.title || "Untitled") +
+        " — " + TYPE_LABEL[it.type] + ", " + (it.minutes || 0) + " min" + who);
+      if (it.notes) lines.push("   " + it.notes.replace(/\n/g, "\n   "));
+      (it.actions || []).forEach(function (a) {
+        if (a.text) lines.push("   - [" + (a.done ? "x" : " ") + "] " + a.text + (a.owner ? " — " + a.owner : ""));
+      });
+    });
+    return lines.join("\n");
+  }
+
+  function fallbackCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast("Agenda copied — paste into your email"); }
+    catch (e) { toast("Couldn't copy automatically"); }
+    ta.remove();
+  }
+
+  function formatDate(iso) {
+    if (!iso) return "";
+    var d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  }
+
+  // ---------- toast ----------
+  var toastTimer;
+  function toast(msg) {
+    var el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2600);
+  }
+
+  // ---------- go ----------
+  render();
+  flagSaved("Ready");
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+name = "slt-agenda"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "public"
+
+# Cloudflare D1 database binding. After you run `wrangler d1 create slt-agenda`,
+# paste the printed database_id below (replace the placeholder).
+[[d1_databases]]
+binding = "DB"
+database_name = "slt-agenda"
+database_id = "REPLACE_WITH_YOUR_DATABASE_ID"

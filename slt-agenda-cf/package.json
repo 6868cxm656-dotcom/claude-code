@@ -1,0 +1,15 @@
+{
+  "name": "slt-agenda",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared weekly agenda planner for the Senior Leadership Team (Cloudflare Pages + D1).",
+  "scripts": {
+    "dev": "wrangler pages dev",
+    "deploy": "wrangler pages deploy",
+    "db:local": "wrangler d1 execute slt-agenda --local --file=./schema.sql",
+    "db:remote": "wrangler d1 execute slt-agenda --remote --file=./schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

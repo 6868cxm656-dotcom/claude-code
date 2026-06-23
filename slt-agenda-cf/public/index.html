@@ -341,14 +341,16 @@
     return { id: uid(), title: title, type: type, minutes: minutes, owner: owner || "",
              notes: "", status: "todo", standing: !!standing, actions: [] };
   }
+  var DEFAULT_TARGET = 120; // two hours
+
+  // Standing items kept on every agenda. The first is pinned to the start;
+  // the trailing block stays at the end (new items are added above them).
   function seedItems() {
     return [
-      mkItem("Welcome & check-in", "info", 5, "", true),
-      mkItem("Fellowship programme update", "update", 10, "", true),
-      mkItem("2026 grant round — timeline & criteria", "decision", 15, ""),
-      mkItem("External profile & comms", "discussion", 10, ""),
-      mkItem("Finance & reserves position", "update", 10, "", true),
-      mkItem("Actions review & AOB", "info", 10, "", true)
+      mkItem("Welcome", "info", 5, "", true),
+      mkItem("Review Team Meeting agenda next week", "discussion", 5, "", true),
+      mkItem("Review SLT agenda next week", "discussion", 5, "", true),
+      mkItem("AOB", "info", 5, "", true)
     ];
   }
 
@@ -665,10 +667,15 @@
 
   // ---------- toolbar ----------
   document.getElementById("btnAdd").addEventListener("click", function () {
-    current.items.push(mkItem("", "discussion", 10, ""));
+    // Insert above the trailing block of standing items (e.g. AOB), but keep
+    // a standing first item (Welcome) at the top.
+    var idx = current.items.length;
+    while (idx > 1 && current.items[idx - 1].standing) idx--;
+    var fresh = mkItem("", "discussion", 10, "");
+    current.items.splice(idx, 0, fresh);
     render(); scheduleSave();
-    var last = agendaEl.querySelector(".item:last-child .item-title");
-    if (last) last.focus();
+    var node = agendaEl.querySelector('.item[data-id="' + fresh.id + '"] .item-title');
+    if (node) node.focus();
   });
 
   document.getElementById("meetingPicker").addEventListener("change", function (e) {
@@ -683,8 +690,8 @@
       title: current ? current.title : "Senior Leadership Team",
       date: nextWeekday(),
       start: current ? current.start : "09:00",
-      target: current ? current.target : 60,
-      items: [mkItem("Welcome & check-in", "info", 5, "", true)]
+      target: current ? current.target : DEFAULT_TARGET,
+      items: seedItems()
     }) }).then(function (m) {
       return refreshMeetings().then(function () { return openMeeting(m.id); });
     }).then(function () { toast("New meeting created"); });
@@ -706,7 +713,7 @@
     api("/meetings", { method: "POST", body: JSON.stringify({
       title: current.title, date: d.toISOString().slice(0, 10),
       start: current.start, target: current.target,
-      items: kept.length ? kept : [mkItem("Welcome & check-in", "info", 5, "", true)]
+      items: kept.length ? kept : seedItems()
     }) }).then(function (m) {
       return refreshMeetings().then(function () { return openMeeting(m.id); });
     }).then(function () {
@@ -779,7 +786,7 @@
 
   function createSeedMeeting() {
     return api("/meetings", { method: "POST", body: JSON.stringify({
-      title: "Senior Leadership Team", date: nextWeekday(), start: "09:00", target: 60, items: seedItems()
+      title: "Senior Leadership Team", date: nextWeekday(), start: "09:00", target: DEFAULT_TARGET, items: seedItems()
     }) }).then(function (m) {
       return refreshMeetings().then(function () { return openMeeting(m.id); });
     });

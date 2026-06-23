@@ -16,12 +16,17 @@ export const onRequestPut = async ({ params, request, env }) => {
   if (!exists) return json({ error: "Not found" }, 404);
 
   await env.DB.prepare(
-    "UPDATE meetings SET title=?, date=?, start=?, target=?, updated_at=datetime('now'), updated_by=? WHERE id=?"
+    "UPDATE meetings SET title=?, date=?, start=?, target=?, kind=?, label=?, recording_url=?, transcript=?, " +
+      "updated_at=datetime('now'), updated_by=? WHERE id=?"
   ).bind(
     body.title || "Senior Leadership Team",
     body.date,
     body.start || "09:00",
-    parseInt(body.target, 10) || 60,
+    parseInt(body.target, 10) || 120,
+    ["slt", "board", "subcommittee", "team"].includes(body.kind) ? body.kind : "slt",
+    body.label || "",
+    body.recording_url || "",
+    body.transcript || "",
     email,
     params.id
   ).run();

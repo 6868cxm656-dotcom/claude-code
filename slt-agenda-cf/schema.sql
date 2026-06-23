@@ -2,14 +2,18 @@
 -- Apply with:  npm run db:remote   (and  npm run db:local  for local dev)
 
 CREATE TABLE IF NOT EXISTS meetings (
-  id          TEXT PRIMARY KEY,
-  title       TEXT NOT NULL DEFAULT 'Senior Leadership Team',
-  date        TEXT NOT NULL,
-  start       TEXT NOT NULL DEFAULT '09:00',
-  target      INTEGER NOT NULL DEFAULT 60,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_by  TEXT
+  id            TEXT PRIMARY KEY,
+  title         TEXT NOT NULL DEFAULT 'Senior Leadership Team',
+  date          TEXT NOT NULL,
+  start         TEXT NOT NULL DEFAULT '09:00',
+  target        INTEGER NOT NULL DEFAULT 120,
+  kind          TEXT NOT NULL DEFAULT 'slt',   -- slt | board | subcommittee | team
+  label         TEXT NOT NULL DEFAULT '',      -- optional name, e.g. a committee
+  recording_url TEXT NOT NULL DEFAULT '',      -- Granola share link
+  transcript    TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS items (

@@ -226,6 +226,123 @@
 
   .loading { text-align: center; color: var(--muted); padding: 60px 20px; font-family: var(--mono); font-size: 13px; }
 
+  /* ---- meeting type (kind) ---- */
+  .kindsel {
+    font-family: var(--mono); font-size: 14px; color: var(--text); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; cursor: pointer;
+  }
+  .kindsel:focus { outline: none; border-color: var(--accent); }
+  /* per-kind accent, used on badges, dots and column headers */
+  .k-slt { --kind: var(--accent); }
+  .k-board { --kind: var(--teal); }
+  .k-subcommittee { --kind: #6A5ACD; }
+  .k-team { --kind: #5C6B7A; }
+  .kind-badge {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    font-weight: 600; color: #fff; background: var(--kind, var(--accent));
+    border-radius: 99px; padding: 2px 9px; white-space: nowrap;
+  }
+
+  /* ---- view tabs ---- */
+  .viewtabs { display: flex; gap: 4px; margin-bottom: 18px; }
+  .tab {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+    background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted);
+    border-radius: 0; padding: 6px 10px;
+  }
+  .tab:hover { color: var(--text); border-color: var(--line); }
+  .tab.on { color: var(--text); border-color: var(--accent); }
+
+  /* ---- recording / transcript ---- */
+  .recording {
+    margin-top: 22px; padding: 18px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+  }
+  .rec-title { font-family: var(--serif); font-weight: 500; font-size: 19px; margin: 0 0 4px; }
+  .rec-help { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+  .rec-row { display: flex; gap: 10px; align-items: center; }
+  .rec-url {
+    flex: 1; font-family: var(--sans); font-size: 14px; color: var(--text); background: var(--ground);
+    border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px;
+  }
+  .rec-url:focus { outline: none; border-color: var(--accent); }
+  .rec-open {
+    font-family: var(--mono); font-size: 12px; color: var(--accent); text-decoration: none;
+    border: 1px solid var(--accent); border-radius: 7px; padding: 8px 12px; white-space: nowrap;
+  }
+  .rec-open:hover { background: var(--accent-soft); }
+  .rec-transcript {
+    width: 100%; margin-top: 12px; min-height: 90px; resize: vertical; font-family: var(--sans);
+    font-size: 13.5px; line-height: 1.55; color: var(--text); background: var(--ground);
+    border: 1px solid var(--line); border-radius: 7px; padding: 11px;
+  }
+  .rec-transcript:focus { outline: none; border-color: var(--accent); }
+
+  /* ---- planner board ---- */
+  .board-head {
+    display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+    gap: 16px; padding-bottom: 18px; border-bottom: 2px solid var(--text); margin-bottom: 16px;
+  }
+  .board-title { font-family: var(--serif); font-weight: 500; font-size: clamp(24px, 4vw, 34px); margin: 0; }
+  .board-actions { display: flex; gap: 8px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .legend .dot { width: 10px; height: 10px; border-radius: 99px; background: var(--kind); }
+
+  .board { display: flex; flex-direction: column; gap: 26px; }
+  .month-group h3 {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 12px; font-weight: 500;
+  }
+  .columns { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+  .column {
+    flex: 0 0 248px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: var(--shadow); display: flex; flex-direction: column;
+    border-top: 3px solid var(--kind, var(--accent));
+  }
+  .column.drop-target { box-shadow: 0 0 0 2px var(--accent); }
+  .col-head { padding: 12px 13px 10px; border-bottom: 1px solid var(--line-soft); cursor: pointer; }
+  .col-head:hover .col-title { color: var(--accent); }
+  .col-date { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .col-title { font-family: var(--serif); font-size: 16px; font-weight: 500; margin: 3px 0; line-height: 1.2; }
+  .col-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .col-mins { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .col-cards { padding: 10px; display: flex; flex-direction: column; gap: 7px; min-height: 46px; flex: 1; }
+  .card {
+    background: var(--ground); border: 1px solid var(--line-soft); border-radius: 7px;
+    padding: 8px 10px; cursor: grab; font-size: 13px; line-height: 1.35;
+  }
+  .card:active { cursor: grabbing; }
+  .card.dragging { opacity: .4; }
+  .card .card-top { display: flex; align-items: center; gap: 6px; }
+  .card .cdot { width: 7px; height: 7px; border-radius: 99px; flex: none; }
+  .cdot.type-update { background: var(--accent); }
+  .cdot.type-decision { background: var(--teal); }
+  .cdot.type-discussion { background: #41546A; }
+  .cdot.type-info { background: #9AA7B4; }
+  .card .card-title { flex: 1; }
+  .card.done .card-title { text-decoration: line-through; color: var(--muted); }
+  .card .card-mins { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: none; }
+  .col-empty { font-size: 12px; color: #9AA7B4; text-align: center; padding: 10px 0; }
+
+  /* ---- modal ---- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(21, 33, 46, .4); display: flex;
+    align-items: center; justify-content: center; z-index: 60; padding: 20px;
+  }
+  .modal {
+    background: var(--panel); border-radius: 12px; box-shadow: var(--shadow);
+    width: 100%; max-width: 420px; padding: 22px;
+  }
+  .modal h2 { font-family: var(--serif); font-weight: 500; font-size: 22px; margin: 0 0 14px; }
+  .modal .field { margin-bottom: 12px; }
+  .modal .field input, .modal .field select {
+    font-family: var(--sans); font-size: 14px; color: var(--text); background: var(--ground);
+    border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px; width: 100%;
+  }
+  .modal .field input:focus, .modal .field select:focus { outline: none; border-color: var(--accent); }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
   @media (max-width: 560px) { .item { grid-template-columns: 62px 1fr; } .meta { width: 100%; } }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
@@ -240,12 +357,31 @@
 </head>
 <body>
   <main class="wrap">
+    <nav class="viewtabs">
+      <button class="tab on" id="tabAgenda">Agenda</button>
+      <button class="tab" id="tabBoard">Planner</button>
+    </nav>
+
+    <section id="agendaView">
     <header class="masthead">
       <div>
-        <p class="eyebrow">Churchill Fellowship · Weekly</p>
+        <p class="eyebrow" id="mastheadEyebrow">Churchill Fellowship · Weekly</p>
         <input class="title-input" id="mtgTitle" aria-label="Meeting title" />
       </div>
       <div class="meta">
+        <div class="field">
+          <label for="mtgKind">Type</label>
+          <select id="mtgKind" class="kindsel">
+            <option value="slt">SLT</option>
+            <option value="board">Board</option>
+            <option value="subcommittee">Subcommittee</option>
+            <option value="team">Team Meeting</option>
+          </select>
+        </div>
+        <div class="field" id="labelField" hidden>
+          <label for="mtgLabel">Committee</label>
+          <input type="text" id="mtgLabel" placeholder="e.g. Finance" />
+        </div>
         <div class="field">
           <label for="mtgDate">Date</label>
           <input type="date" id="mtgDate" />
@@ -281,8 +417,45 @@
 
     <ul class="agenda" id="agenda"><li class="loading">Loading shared agenda…</li></ul>
 
+    <section class="recording" id="recording">
+      <h2 class="rec-title">Recording &amp; transcript</h2>
+      <p class="rec-help">Paste the Granola share link for this meeting, and the transcript if you'd like it kept here.</p>
+      <div class="rec-row">
+        <input type="url" id="recUrl" class="rec-url" placeholder="https://notes.granola.ai/…" aria-label="Granola link" />
+        <a class="rec-open" id="recOpen" target="_blank" rel="noopener" hidden>Open ↗</a>
+      </div>
+      <textarea id="recTranscript" class="rec-transcript" placeholder="Paste the transcript here (optional)…" aria-label="Transcript"></textarea>
+    </section>
+
     <p class="footnote" id="footnote"></p>
+    </section>
+
+    <section id="boardView" hidden>
+      <header class="board-head">
+        <div>
+          <p class="eyebrow">Churchill Fellowship · Planner</p>
+          <h1 class="board-title">Upcoming meetings — next 3 months</h1>
+        </div>
+        <div class="board-actions">
+          <button id="btnSchedule">Schedule SLT weekly…</button>
+          <button class="primary" id="btnAddMeeting">+ Add meeting</button>
+        </div>
+      </header>
+      <div class="legend" id="legend"></div>
+      <div class="board" id="board"><div class="loading">Loading planner…</div></div>
+    </section>
   </main>
+
+  <div class="modal-backdrop" id="modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <h2 id="modalTitle"></h2>
+      <div id="modalBody"></div>
+      <div class="modal-foot">
+        <button id="modalCancel">Cancel</button>
+        <button class="primary" id="modalOk">OK</button>
+      </div>
+    </div>
+  </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -292,13 +465,19 @@
 
   var TYPES = ["update", "decision", "discussion", "info"];
   var TYPE_LABEL = { update: "Update", decision: "Decision", discussion: "Discussion", info: "Info" };
+  var KINDS = ["slt", "board", "subcommittee", "team"];
+  var KIND_LABEL = { slt: "SLT", board: "Board", subcommittee: "Subcommittee", team: "Team Meeting" };
   var LAST_KEY = "slt-agenda-last-id";
 
   var current = null;   // the meeting currently being edited
   var meetings = [];    // summary list for the picker
   var me = "";          // signed-in email
+  var view = "agenda";  // "agenda" | "board"
 
   var agendaEl = document.getElementById("agenda");
+
+  function kindOf(m) { return KINDS.indexOf(m && m.kind) >= 0 ? m.kind : "slt"; }
+  function kindLabel(m) { return (m && m.label) ? m.label : KIND_LABEL[kindOf(m)]; }
 
   // ---------- helpers ----------
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -407,6 +586,17 @@
     document.getElementById("mtgDate").value = current.date;
     document.getElementById("mtgStart").value = current.start;
     document.getElementById("mtgTarget").value = current.target;
+    document.getElementById("mtgKind").value = kindOf(current);
+    document.getElementById("mtgLabel").value = current.label || "";
+    document.getElementById("labelField").hidden = kindOf(current) !== "subcommittee";
+    document.getElementById("mastheadEyebrow").textContent = "Churchill Fellowship · " + KIND_LABEL[kindOf(current)];
+
+    var recUrl = document.getElementById("recUrl");
+    recUrl.value = current.recording_url || "";
+    var recOpen = document.getElementById("recOpen");
+    recOpen.hidden = !current.recording_url;
+    if (current.recording_url) recOpen.href = current.recording_url;
+    document.getElementById("recTranscript").value = current.transcript || "";
 
     agendaEl.innerHTML = "";
     if (!current.items.length) {
@@ -664,6 +854,36 @@
   document.getElementById("mtgDate").addEventListener("input", function (e) { current.date = e.target.value; scheduleSave(); });
   document.getElementById("mtgStart").addEventListener("input", function (e) { current.start = e.target.value; recalc(); scheduleSave(); });
   document.getElementById("mtgTarget").addEventListener("input", function (e) { current.target = clampInt(e.target.value, 0, 600); recalc(); scheduleSave(); });
+  document.getElementById("mtgKind").addEventListener("change", function (e) {
+    current.kind = e.target.value;
+    document.getElementById("labelField").hidden = current.kind !== "subcommittee";
+    document.getElementById("mastheadEyebrow").textContent = "Churchill Fellowship · " + KIND_LABEL[kindOf(current)];
+    scheduleSave();
+  });
+  document.getElementById("mtgLabel").addEventListener("input", function (e) { current.label = e.target.value; scheduleSave(); });
+
+  // ---------- recording / transcript ----------
+  document.getElementById("recUrl").addEventListener("input", function (e) {
+    current.recording_url = e.target.value.trim();
+    var recOpen = document.getElementById("recOpen");
+    recOpen.hidden = !current.recording_url;
+    if (current.recording_url) recOpen.href = current.recording_url;
+    scheduleSave();
+  });
+  document.getElementById("recTranscript").addEventListener("input", function (e) { current.transcript = e.target.value; scheduleSave(); });
+
+  // ---------- view tabs ----------
+  document.getElementById("tabAgenda").addEventListener("click", function () { switchView("agenda"); });
+  document.getElementById("tabBoard").addEventListener("click", function () { switchView("board"); });
+
+  function switchView(v) {
+    view = v;
+    document.getElementById("tabAgenda").classList.toggle("on", v === "agenda");
+    document.getElementById("tabBoard").classList.toggle("on", v === "board");
+    document.getElementById("agendaView").hidden = v !== "agenda";
+    document.getElementById("boardView").hidden = v !== "board";
+    if (v === "board") renderBoard();
+  }
 
   // ---------- toolbar ----------
   document.getElementById("btnAdd").addEventListener("click", function () {
@@ -713,6 +933,7 @@
     api("/meetings", { method: "POST", body: JSON.stringify({
       title: current.title, date: d.toISOString().slice(0, 10),
       start: current.start, target: current.target,
+      kind: kindOf(current), label: current.label || "",
       items: kept.length ? kept : seedItems()
     }) }).then(function (m) {
       return refreshMeetings().then(function () { return openMeeting(m.id); });
@@ -791,6 +1012,240 @@
       return refreshMeetings().then(function () { return openMeeting(m.id); });
     });
   }
+
+  // ---------- planner board ----------
+  var boardEl = document.getElementById("board");
+  var boardMeetings = [];
+  var boardDrag = null;
+
+  function loadBoard() {
+    return api("/meetings?items=1").then(function (list) { boardMeetings = list || []; });
+  }
+
+  function renderLegend() {
+    var legend = document.getElementById("legend");
+    legend.innerHTML = "";
+    KINDS.forEach(function (k) {
+      var s = document.createElement("span");
+      s.className = "k-" + k;
+      s.innerHTML = '<span class="dot"></span>' + KIND_LABEL[k];
+      legend.appendChild(s);
+    });
+  }
+
+  function renderBoard() {
+    renderLegend();
+    boardEl.innerHTML = '<div class="loading">Loading planner…</div>';
+    loadBoard().then(function () {
+      boardEl.innerHTML = "";
+      var today = new Date(); today.setHours(0, 0, 0, 0);
+      var from = new Date(today); from.setDate(from.getDate() - 7);
+      var to = new Date(today); to.setDate(to.getDate() + 92);
+      var fromIso = from.toISOString().slice(0, 10), toIso = to.toISOString().slice(0, 10);
+      var shown = boardMeetings.filter(function (m) { return m.date >= fromIso && m.date <= toIso; });
+      shown.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+
+      if (!shown.length) {
+        boardEl.innerHTML = '<div class="empty"><h2>No meetings in the next 3 months</h2>' +
+          '<div>Use “Schedule SLT weekly” or “+ Add meeting” to fill in the planner.</div></div>';
+        return;
+      }
+
+      var groups = [], byKey = {};
+      shown.forEach(function (m) {
+        var d = new Date(m.date + "T00:00:00");
+        var key = d.getFullYear() + "-" + d.getMonth();
+        if (!byKey[key]) {
+          byKey[key] = { label: d.toLocaleDateString("en-GB", { month: "long", year: "numeric" }), items: [] };
+          groups.push(byKey[key]);
+        }
+        byKey[key].items.push(m);
+      });
+
+      groups.forEach(function (g) {
+        var wrap = document.createElement("div");
+        wrap.className = "month-group";
+        var h = document.createElement("h3");
+        h.textContent = g.label;
+        wrap.appendChild(h);
+        var cols = document.createElement("div");
+        cols.className = "columns";
+        g.items.forEach(function (m) { cols.appendChild(renderColumn(m)); });
+        wrap.appendChild(cols);
+        boardEl.appendChild(wrap);
+      });
+    }).catch(function () {
+      boardEl.innerHTML = '<div class="empty"><h2>Couldn\'t load the planner</h2><div>Please refresh and try again.</div></div>';
+    });
+  }
+
+  function renderColumn(m) {
+    var col = document.createElement("div");
+    col.className = "column k-" + kindOf(m);
+    col.dataset.id = m.id;
+
+    var head = document.createElement("div");
+    head.className = "col-head";
+    var total = (m.items || []).reduce(function (s, it) { return s + (parseInt(it.minutes, 10) || 0); }, 0);
+    var date = document.createElement("div");
+    date.className = "col-date"; date.textContent = shortDate(m.date);
+    var title = document.createElement("div");
+    title.className = "col-title"; title.textContent = m.title || "Untitled";
+    var meta = document.createElement("div");
+    meta.className = "col-meta";
+    var badge = document.createElement("span");
+    badge.className = "kind-badge"; badge.textContent = kindLabel(m);
+    var mins = document.createElement("span");
+    mins.className = "col-mins"; mins.textContent = total + " min" + (m.has_recording ? " · 🎙" : "");
+    meta.appendChild(badge); meta.appendChild(mins);
+    head.appendChild(date); head.appendChild(title); head.appendChild(meta);
+    head.addEventListener("click", function () {
+      commitSave();
+      openMeeting(m.id).then(function () { switchView("agenda"); });
+    });
+    col.appendChild(head);
+
+    var cards = document.createElement("div");
+    cards.className = "col-cards"; cards.dataset.id = m.id;
+    if (!(m.items || []).length) {
+      var e = document.createElement("div");
+      e.className = "col-empty"; e.textContent = "No items";
+      cards.appendChild(e);
+    } else {
+      m.items.forEach(function (it) { cards.appendChild(renderCard(it, m.id)); });
+    }
+    attachColumnDrop(cards, col, m.id);
+    col.appendChild(cards);
+    return col;
+  }
+
+  function renderCard(it, meetingId) {
+    var c = document.createElement("div");
+    c.className = "card" + (it.status === "done" ? " done" : "");
+    c.setAttribute("draggable", "true");
+    var top = document.createElement("div");
+    top.className = "card-top";
+    var dot = document.createElement("span");
+    dot.className = "cdot type-" + it.type;
+    var t = document.createElement("span");
+    t.className = "card-title"; t.textContent = it.title || "Untitled";
+    var mn = document.createElement("span");
+    mn.className = "card-mins"; mn.textContent = (it.minutes || 0) + "m";
+    top.appendChild(dot); top.appendChild(t); top.appendChild(mn);
+    c.appendChild(top);
+    c.addEventListener("dragstart", function (e) {
+      boardDrag = { itemId: it.id, fromId: meetingId };
+      c.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", it.id); } catch (err) {}
+    });
+    c.addEventListener("dragend", function () {
+      c.classList.remove("dragging");
+      Array.prototype.forEach.call(document.querySelectorAll(".column"), function (x) { x.classList.remove("drop-target"); });
+      boardDrag = null;
+    });
+    return c;
+  }
+
+  function attachColumnDrop(cards, col, meetingId) {
+    cards.addEventListener("dragover", function (e) {
+      if (!boardDrag) return;
+      e.preventDefault(); col.classList.add("drop-target");
+    });
+    cards.addEventListener("dragleave", function () { col.classList.remove("drop-target"); });
+    cards.addEventListener("drop", function (e) {
+      e.preventDefault(); col.classList.remove("drop-target");
+      if (!boardDrag || boardDrag.fromId === meetingId) return;
+      var moving = boardDrag; boardDrag = null;
+      setStatus("Moving item…");
+      api("/move", { method: "POST", body: JSON.stringify({
+        itemId: moving.itemId, fromId: moving.fromId, toId: meetingId
+      }) }).then(function () {
+        if (current && (current.id === moving.fromId || current.id === meetingId)) {
+          return openMeeting(current.id).then(renderBoard);
+        }
+        renderBoard();
+        toast("Item moved");
+      }).catch(function () { setStatus("Couldn't move item", true); renderBoard(); });
+    });
+  }
+
+  // ---------- modal ----------
+  function openModal(title, fieldsHtml, okLabel, onOk) {
+    document.getElementById("modalTitle").textContent = title;
+    document.getElementById("modalBody").innerHTML = fieldsHtml;
+    var ok = document.getElementById("modalOk");
+    var cancel = document.getElementById("modalCancel");
+    ok.textContent = okLabel;
+    var modal = document.getElementById("modal");
+    modal.hidden = false;
+    function close() { modal.hidden = true; ok.onclick = null; cancel.onclick = null; }
+    cancel.onclick = close;
+    ok.onclick = function () { if (onOk() !== false) close(); };
+  }
+
+  function nextWeekdayDate(targetDow) {
+    var d = new Date(); d.setHours(0, 0, 0, 0);
+    var add = (targetDow - d.getDay() + 7) % 7;
+    if (add === 0) add = 7;
+    d.setDate(d.getDate() + add);
+    return d.toISOString().slice(0, 10);
+  }
+
+  document.getElementById("btnSchedule").addEventListener("click", function () {
+    openModal("Schedule SLT weekly",
+      '<div class="field"><label>Start date</label><input type="date" id="schFrom" value="' + nextWeekdayDate(1) + '"></div>' +
+      '<div class="field"><label>Time</label><input type="time" id="schStart" value="09:00"></div>' +
+      '<div class="field"><label>Length (min)</label><input type="number" id="schTarget" value="120" min="5" step="5"></div>' +
+      '<div class="field"><label>How many weeks</label><input type="number" id="schWeeks" value="13" min="1" max="26"></div>',
+      "Create meetings",
+      function () {
+        var fromDate = document.getElementById("schFrom").value;
+        if (!fromDate) return false;
+        var body = {
+          fromDate: fromDate,
+          start: document.getElementById("schStart").value,
+          target: clampInt(document.getElementById("schTarget").value, 5, 600),
+          weeks: clampInt(document.getElementById("schWeeks").value, 1, 26),
+          kind: "slt", title: "Senior Leadership Team"
+        };
+        setStatus("Scheduling…");
+        api("/schedule", { method: "POST", body: JSON.stringify(body) }).then(function (r) {
+          return refreshMeetings().then(function () {
+            renderBoard(); toast("Added " + r.created + " meeting(s)"); setStatus("Up to date", false);
+          });
+        }).catch(function () { setStatus("Couldn't schedule", true); });
+      });
+  });
+
+  document.getElementById("btnAddMeeting").addEventListener("click", function () {
+    var opts = KINDS.map(function (k) { return '<option value="' + k + '">' + KIND_LABEL[k] + '</option>'; }).join("");
+    openModal("Add meeting",
+      '<div class="field"><label>Type</label><select id="amKind">' + opts + '</select></div>' +
+      '<div class="field"><label>Title</label><input type="text" id="amTitle" placeholder="e.g. Board meeting"></div>' +
+      '<div class="field"><label>Date</label><input type="date" id="amDate" value="' + nextWeekdayDate(1) + '"></div>' +
+      '<div class="field"><label>Time</label><input type="time" id="amStart" value="09:00"></div>' +
+      '<div class="field"><label>Length (min)</label><input type="number" id="amTarget" value="120" min="5" step="5"></div>',
+      "Add meeting",
+      function () {
+        var kind = document.getElementById("amKind").value;
+        var date = document.getElementById("amDate").value;
+        if (!date) return false;
+        var defTitle = kind === "slt" ? "Senior Leadership Team" : KIND_LABEL[kind] + " meeting";
+        var body = {
+          kind: kind, title: document.getElementById("amTitle").value || defTitle,
+          date: date, start: document.getElementById("amStart").value,
+          target: clampInt(document.getElementById("amTarget").value, 5, 600),
+          items: seedItems()
+        };
+        setStatus("Creating…");
+        api("/meetings", { method: "POST", body: JSON.stringify(body) }).then(function () {
+          return refreshMeetings().then(function () {
+            renderBoard(); toast("Meeting added"); setStatus("Up to date", false);
+          });
+        }).catch(function () { setStatus("Couldn't add meeting", true); });
+      });
+  });
 
   // ---------- boot ----------
   function fail(msg) {

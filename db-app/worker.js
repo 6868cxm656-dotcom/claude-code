@@ -28,6 +28,19 @@ async function ensureInit(env){
   await env.DB.batch(stmts);
 }
 
+// Idempotent one-off additions to an already-seeded database (guarded by a marker
+// in settings). Currently: add the hidden "portal not ready on time" risk (R41).
+async function ensureExtras(env){
+  const m = await env.DB.prepare("SELECT v FROM settings WHERE k='extras_v1'").first();
+  if(m) return;
+  const extra = SEED_RISKS.find(r=>r.id==="R41");
+  if(extra){
+    await env.DB.prepare("INSERT OR IGNORE INTO risks (id,committee,l2,updated,pending_new,data) VALUES (?,?,?,?,0,?)")
+      .bind(extra.id, extra.com, extra.l2, extra.updated||"", JSON.stringify(extra)).run();
+  }
+  await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('extras_v1','1')").run();
+}
+
 // Cloudflare Access guarantees this header on every request to a protected hostname,
 // overwriting any client-supplied value at the edge, so it is safe to trust here.
 function emailFromRequest(req){
@@ -59,6 +72,7 @@ async function nextId(env){
 
 async function handleApi(req, env){
   await ensureInit(env);
+  await ensureExtras(env);
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/,"");
   const email = emailFromRequest(req);
@@ -66,14 +80,18 @@ async function handleApi(req, env){
   const now = new Date().toISOString();
   const body = req.method==="GET" ? {} : await req.json().catch(()=>({}));
 
-  // identity
+  // identity + state. Hidden risks are returned ONLY to admins (Jim/Julia);
+  // everyone else never receives them, so they cannot be seen even via the API.
   if(path==="/api/state" && req.method==="GET"){
     const rs = await env.DB.prepare("SELECT data FROM risks").all();
     const ds = await env.DB.prepare("SELECT data FROM deleted").all();
     const st = await env.DB.prepare("SELECT v FROM settings WHERE k='global'").first();
+    let riskRows = (rs.results||[]).map(x=>JSON.parse(x.data));
+    let delRows  = (ds.results||[]).map(x=>JSON.parse(x.data));
+    if(!isAdmin(role)){ riskRows = riskRows.filter(r=>!r.hidden); delRows = delRows.filter(r=>!r.hidden); }
     return json({
-      risks: (rs.results||[]).map(x=>JSON.parse(x.data)),
-      deleted: (ds.results||[]).map(x=>JSON.parse(x.data)),
+      risks: riskRows,
+      deleted: delRows,
       settings: st ? JSON.parse(st.v) : {},
       me: {email, role, admin: isAdmin(role)}
     });
@@ -87,6 +105,7 @@ async function handleApi(req, env){
     const id = proposed.id || await nextId(env);
     proposed.id = id;
     const prev = proposed.id ? await loadRisk(env, id) : null;
+    if(prev && prev.hidden && !isAdmin(role)) return json({error:"Not found"}, 404);
     if(prev && body.baseUpdated && body.baseUpdated !== prev.updated)
       return json({error:"This risk changed since you opened it — please reload.", code:409}, 409);
     const res = decideSave(role, prev, proposed, body.note, now);
@@ -98,16 +117,27 @@ async function handleApi(req, env){
 
   // routes carrying an id: /api/risk/:id/... and /api/proposal/:id/...
   let m;
+  // A hidden risk is invisible to non-admins on every per-id route too.
+  const hiddenBlocked = async (id) => { const p = await loadRisk(env, id); return (p && p.hidden && !isAdmin(role)) ? null : p; };
+
+  if((m = path.match(/^\/api\/risk\/([^/]+)\/visibility$/)) && req.method==="POST"){
+    if(!isAdmin(role)) return json({error:"Admins only"}, 403);
+    const prev = await loadRisk(env, m[1]); if(!prev) return json({error:"Not found"}, 404);
+    prev.hidden = !!body.hidden; prev.updated = now;
+    prev.history = (prev.history||[]).concat([{at:now, by:role,
+      note: prev.hidden ? "Hidden from wider sharing" : "Made visible to all staff"}]);
+    await upsertRisk(env, prev); return json({ok:true, risk:prev});
+  }
   if((m = path.match(/^\/api\/risk\/([^/]+)\/flag$/)) && req.method==="POST"){
-    const prev = await loadRisk(env, m[1]); const r = applyFlag(role, prev, body.note, now);
+    const prev = await hiddenBlocked(m[1]); const r = applyFlag(role, prev, body.note, now);
     if(r.error) return json({error:r.error}, r.code); await upsertRisk(env, r.risk); return json({ok:true, risk:r.risk});
   }
   if((m = path.match(/^\/api\/risk\/([^/]+)\/clearflag$/)) && req.method==="POST"){
-    const prev = await loadRisk(env, m[1]); const r = applyClearFlag(role, prev, now);
+    const prev = await hiddenBlocked(m[1]); const r = applyClearFlag(role, prev, now);
     if(r.error) return json({error:r.error}, r.code); await upsertRisk(env, r.risk); return json({ok:true, risk:r.risk});
   }
   if((m = path.match(/^\/api\/risk\/([^/]+)$/)) && req.method==="DELETE"){
-    const prev = await loadRisk(env, m[1]); const d = decideDelete(role, prev, body.note, now);
+    const prev = await hiddenBlocked(m[1]); const d = decideDelete(role, prev, body.note, now);
     if(d.error) return json({error:d.error}, d.code);
     if(d.kind==="delete-live"){ await tombstone(env, {...prev, pending:null, deletedAt:now, deletedBy:role}); await removeRisk(env, prev.id); return json({ok:true, deleted:true}); }
     if(d.kind==="withdraw"){ await removeRisk(env, prev.id); return json({ok:true, withdrawn:true}); }

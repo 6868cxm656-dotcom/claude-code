@@ -201,6 +201,8 @@
   /* approvals + proposals */
   .navbadge{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:#fff;color:var(--red-dark);font-size:10.5px;font-weight:800;margin-left:4px;vertical-align:1px}
   .tag-prop{background:#fff3cd;color:#7a5d00}
+  .tag-hidden{background:#37343f;color:#fff}
+  tr.is-hidden td{background:#f6f4f8}
   .prop-card{border:1px solid var(--line);border-left:4px solid #b8860b;border-radius:12px;padding:14px 16px;margin-bottom:12px;break-inside:avoid}
   .prop-card.kind-new{border-left-color:var(--low)}
   .prop-card.kind-delete{border-left-color:var(--sev)}
@@ -421,6 +423,7 @@ window.onerror = function(msg, src, line){
         </select>
         <span class="toggle" id="fBreach" onclick="this.classList.toggle('on');renderRegister()">⚠ Outside appetite</span>
         <span class="toggle" id="fFlag" onclick="this.classList.toggle('on');renderRegister()">🚩 Flagged</span>
+        <span class="toggle" id="fHidden" style="display:none" onclick="this.classList.toggle('on');renderRegister()">🙈 Hidden</span>
         <span class="toggle" id="fOverdue" onclick="this.classList.toggle('on');renderRegister()">⏰ Review overdue</span>
         <button class="btn-soft" onclick="clearFilters()">Clear</button>
       </div>
@@ -550,6 +553,7 @@ window.onerror = function(msg, src, line){
         <button class="btn-danger" id="mDelete" onclick="deleteRisk()">Delete risk</button>
         <button class="btn-soft" id="mFlag" onclick="flagRisk()">🚩 Request review</button>
         <button class="btn-soft" id="mClearFlag" onclick="clearFlag()">Clear flag</button>
+        <button class="btn-soft" id="mHide" onclick="toggleHidden()" style="display:none"></button>
         <span class="flag-info" id="mFlagInfo" style="display:none"></span>
       </div>
       <div class="right">
@@ -698,7 +702,8 @@ const BASELINE_RISKS = [
  {id:"R37", l2:"8.3", com:"ARGC", l:2, i:4, draft:true, title:"Personal data breach (UK GDPR)", desc:"A breach of personal data — Fellows, applicants, donors or staff — triggers ICO reporting, individual harm and reputational damage. Carved out of legacy R47/R51 as the portal increases data processing.", controls:["UK GDPR policies and training","Access controls and retention schedule"], actions:["DPIAs for the portal and AI tools before go-live"], review:"2026-08-31"},
  {id:"R38", l2:"8.4", com:"ARGC", l:3, i:4, draft:false, title:"Business continuity event", desc:"A pandemic, terrorism, fire or flood makes the office inaccessible or halts operations, affecting staff, Fellows' travel and suppliers. Legacy: R45, R46.", controls:["Business continuity plan — cloud systems and full work-from-home capability","Commercial and terrorism insurance","Pandemic procedures and Fellow travel guidance"], actions:["Refresh and test the BCP for the new office"], review:"2026-09-30"},
  {id:"R39", l2:"8.2", com:"ARGC", l:3, i:3, draft:true, title:"Systems unsuitable or data quality poor", desc:"Core systems are unsuitable, poorly integrated or hold poor-quality data, creating inefficiency and weak reporting.", controls:["Systems roadmap","Data quality standards in CRM"], actions:["Data quality baseline ahead of portal integration"], review:"2026-10-31"},
- {id:"R40", l2:"8.5", com:"ARGC", l:2, i:3, draft:true, title:"Critical supplier or third-party failure", desc:"A critical supplier or third party — IT provider, investment platform, venue or consultant — fails, under-performs or creates a security or compliance exposure. Legacy: R44 (part; score to confirm).", controls:["Contracts with SLAs for key suppliers","Due diligence at onboarding"], actions:["Map critical suppliers and contingency options"], review:"2026-12-31"}
+ {id:"R40", l2:"8.5", com:"ARGC", l:2, i:3, draft:true, title:"Critical supplier or third-party failure", desc:"A critical supplier or third party — IT provider, investment platform, venue or consultant — fails, under-performs or creates a security or compliance exposure. Legacy: R44 (part; score to confirm).", controls:["Contracts with SLAs for key suppliers","Due diligence at onboarding"], actions:["Map critical suppliers and contingency options"], review:"2026-12-31"},
+ {id:"R41", l2:"7.2", com:"Board", l:3, i:4, draft:true, hidden:true, title:"Portal not ready for go-live on time", desc:"The new Fellowship portal misses its planned go-live date — key build, integration or testing milestones slip — delaying dependent work and the benefits the investment depends on.", controls:["Project plan with milestone gates and a critical path","Weekly delivery tracking against the go-live date","Schedule contingency held"], actions:["Confirm the go-live date and critical path with the supplier","Agree a fallback plan if the date slips"], review:"2026-08-31"}
 ].map(r => ({...r, status:"Open", updated:BASE, created:BASE, history:[{at:BASE, by:"baseline", created:true}]}));
 
 /* ============ STATE ============ */
@@ -804,6 +809,7 @@ function applyMe(me){
   document.getElementById("exportMineBtn").style.display = (role!=="viewer" && !isAdmin()) ? "" : "none";
   document.getElementById("addBtn").style.display = (role==="viewer") ? "none" : "";
   document.getElementById("settingsBtn").style.display = isAdmin() ? "" : "none";
+  const fh = document.getElementById("fHidden"); if(fh) fh.style.display = isAdmin() ? "" : "none";
 }
 async function refreshState(opts){
   if(!apiMode) return;
@@ -823,8 +829,13 @@ async function refreshState(opts){
 /* ============ HELPERS ============ */
 // Risks visible in live views — excludes proposed-new risks awaiting QA.
 const PENDING_FIELDS = ["title","desc","l2","com","l","i","controls","actions","status","review","draft"];
-function liveList(){ return risks.filter(r=>!(r.pending && r.pending.kind==="new")); }
-function pendingList(){ return risks.filter(r=>r.pending); }
+// Hidden risks are visible only to admins (Jim/Julia). In shared mode the server
+// already strips them for others; this guard also covers the offline file copy.
+function visibleToMe(r){ return isAdmin() || !r.hidden; }
+function liveList(){ return risks.filter(r=>!(r.pending && r.pending.kind==="new") && visibleToMe(r)); }
+function pendingList(){ return risks.filter(r=>r.pending && visibleToMe(r)); }
+// For shareable outputs (committee packs, CSV) hidden risks are always excluded.
+function sharedList(){ return liveList().filter(r=>!r.hidden); }
 function pickFields(o){ const f={}; PENDING_FIELDS.forEach(k=>f[k]=o[k]); return f; }
 function score(r){ return r.l * r.i; }
 function band(s){ return s>=16 ? "Severe" : s>=10 ? "High" : s>=5 ? "Moderate" : "Low"; }
@@ -938,6 +949,7 @@ function describeChange(ch){
   if(ch.f==="l2") return "Moved " + esc(ch.from) + " → " + esc(ch.to);
   if(ch.f==="draft") return ch.to ? "Marked as draft" : "Confirmed (draft flag removed)";
   if(ch.f==="flag") return ch.to ? "Review requested" + (ch.to.note? " — "+esc(ch.to.note):"") : "Review flag cleared";
+  if(ch.f==="hidden") return ch.to ? "Hidden from wider sharing" : "Made visible to all staff";
   return f + " " + esc(String(ch.from)) + " → " + esc(String(ch.to));
 }
 function toast(msg){
@@ -953,6 +965,7 @@ function setRole(v, fromIdentity){
   document.getElementById("exportMineBtn").style.display = (v!=="viewer" && !isAdmin()) ? "" : "none";
   document.getElementById("addBtn").style.display = (v==="viewer") ? "none" : "";
   document.getElementById("settingsBtn").style.display = isAdmin() ? "" : "none";
+  const fh = document.getElementById("fHidden"); if(fh) fh.style.display = isAdmin() ? "" : "none";
   renderAll();
 }
 function updateApprBadge(){
@@ -980,14 +993,16 @@ function renderDashboard(){
   const od = open.filter(overdue);
   const flagged = live.filter(r=>r.flag);
   const pend = pendingList().length;
+  const hiddenN = live.filter(r=>r.hidden).length;   // admins only — others never receive hidden risks
   const kp = document.getElementById("kpis");
   kp.innerHTML = `
-    <div class="kpi neutral" onclick="goRegister({})"><div class="n">${live.length}</div><div class="t">Risks on register</div></div>
+    <div class="kpi neutral" onclick="goRegister({})"><div class="n">${live.length}</div><div class="t">Risks ${isAdmin()&&hiddenN?"(incl. hidden)":"on register"}</div></div>
     <div class="kpi alert" onclick="goRegister({breach:true})"><div class="n">${breaches.length}</div><div class="t">Outside draft appetite</div></div>
     <div class="kpi alert" onclick="goRegister({flagged:true})"><div class="n">${flagged.length}</div><div class="t">🚩 Flagged for review</div></div>
     <div class="kpi warn" onclick="goRegister({minScore:16})"><div class="n">${severe.length}</div><div class="t">Severe (16–25)</div></div>
     <div class="kpi warn" onclick="goRegister({overdue:true})"><div class="n">${od.length}</div><div class="t">Reviews overdue</div></div>
-    <div class="kpi ok" onclick="showView('approvals');renderApprovals()"><div class="n">${pend}</div><div class="t">⏳ Awaiting QA approval</div></div>`;
+    <div class="kpi ok" onclick="showView('approvals');renderApprovals()"><div class="n">${pend}</div><div class="t">⏳ Awaiting QA approval</div></div>
+    ${isAdmin() ? `<div class="kpi" style="border-top-color:#37343f" onclick="goRegister({hidden:true})"><div class="n">${hiddenN}</div><div class="t">🙈 Hidden (you &amp; Julia only)</div></div>` : ""}`;
 
   // heatmap: rows likelihood 5→1, cols impact 1→5
   const heat = document.getElementById("heat");
@@ -1036,6 +1051,7 @@ function goRegister(opts){
   if(opts.cat) document.getElementById("fCat").value = opts.cat;
   if(opts.breach) document.getElementById("fBreach").classList.add("on");
   if(opts.flagged) document.getElementById("fFlag").classList.add("on");
+  if(opts.hidden) document.getElementById("fHidden").classList.add("on");
   if(opts.overdue) document.getElementById("fOverdue").classList.add("on");
   if(opts.cell) cellFilter = opts.cell;
   if(opts.minScore) minScoreFilter = opts.minScore;
@@ -1047,6 +1063,7 @@ function clearFilters(noRender){
   ["fCat","fOwner","fApp","fCom","fStatus"].forEach(id=>document.getElementById(id).value="");
   document.getElementById("fBreach").classList.remove("on");
   document.getElementById("fFlag").classList.remove("on");
+  document.getElementById("fHidden").classList.remove("on");
   document.getElementById("fOverdue").classList.remove("on");
   cellFilter = null; minScoreFilter = null;
   if(!noRender) renderRegister();
@@ -1074,6 +1091,7 @@ function renderRegister(){
   const fs = document.getElementById("fStatus").value;
   const fb = document.getElementById("fBreach").classList.contains("on");
   const ffl = document.getElementById("fFlag").classList.contains("on");
+  const fhid = document.getElementById("fHidden").classList.contains("on");
   const fod = document.getElementById("fOverdue").classList.contains("on");
 
   let list = liveList().filter(r=>{
@@ -1085,6 +1103,7 @@ function renderRegister(){
     if(fs && r.status!==fs) return false;
     if(fb && !outsideAppetite(r)) return false;
     if(ffl && !r.flag) return false;
+    if(fhid && !r.hidden) return false;
     if(fod && !overdue(r)) return false;
     if(cellFilter && (r.l!==cellFilter[0] || r.i!==cellFilter[1])) return false;
     if(minScoreFilter && score(r)<minScoreFilter) return false;
@@ -1105,9 +1124,9 @@ function renderRegister(){
   document.getElementById("regBody").innerHTML = list.map(r=>{
     const a = area(r), s = score(r), app = appetite(r);
     const lock = canEdit(r) ? "" : ` <span class="lockicon" title="Read-only for your role">🔒</span>`;
-    return `<tr onclick="openModal('${r.id}')">
+    return `<tr class="${r.hidden?'is-hidden':''}" onclick="openModal('${r.id}')">
       <td style="font-weight:700;color:var(--muted)">${r.id}</td>
-      <td><div class="risk-title">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.flag?`<span class="tag tag-flag" title="Review requested by ${esc(r.flag.by)}${r.flag.note? ": "+esc(r.flag.note):""}">🚩 review</span>`:""}${r.pending?`<span class="tag tag-prop" title="Proposed ${esc(r.pending.kind)} by ${esc(r.pending.by)} awaiting QA">⏳ ${r.pending.kind==="delete"?"deletion ":""}proposal</span>`:""}${lock}</div><div class="risk-sub">${esc(r.desc).slice(0,110)}${r.desc.length>110?"…":""}</div></td>
+      <td><div class="risk-title">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.hidden?'<span class="tag tag-hidden" title="Hidden from wider sharing — only you and Julia can see this">🙈 hidden</span>':""}${r.flag?`<span class="tag tag-flag" title="Review requested by ${esc(r.flag.by)}${r.flag.note? ": "+esc(r.flag.note):""}">🚩 review</span>`:""}${r.pending?`<span class="tag tag-prop" title="Proposed ${esc(r.pending.kind)} by ${esc(r.pending.by)} awaiting QA">⏳ ${r.pending.kind==="delete"?"deletion ":""}proposal</span>`:""}${lock}</div><div class="risk-sub">${esc(r.desc).slice(0,110)}${r.desc.length>110?"…":""}</div></td>
       <td><div style="font-weight:700;font-size:12.5px">${esc(a.cat.name)}</div><div class="risk-sub">${a.ref} ${esc(a.name)}</div></td>
       <td style="white-space:nowrap">${esc(a.cat.owner)}</td>
       <td style="white-space:nowrap"><span class="tag tag-app" title="${esc(COMMITTEES[r.com]||"")}">${esc(r.com||"–")}</span></td>
@@ -1281,6 +1300,12 @@ function openModal(id){
       : (r && r.pending && r.pending.kind==="new" && r.pending.by===role) ? "Withdraw proposal" : "Propose deletion";
   document.getElementById("mFlag").style.display = (!isNew && role!=="viewer" && !(r&&r.flag))? "" : "none";
   document.getElementById("mClearFlag").style.display = (r && r.flag && (canEdit(r) || r.flag.by===role))? "" : "none";
+  // visibility toggle — admins only, existing risks only
+  const hideBtn = document.getElementById("mHide");
+  if(!isNew && isAdmin()){
+    hideBtn.style.display = "";
+    hideBtn.textContent = (r && r.hidden) ? "👁 Make visible to all" : "🙈 Hide from others";
+  } else hideBtn.style.display = "none";
   const fi = document.getElementById("mFlagInfo");
   if(r && r.flag){
     fi.style.display = "";
@@ -1380,6 +1405,22 @@ async function clearFlag(){
   r.flag = null;
   persist(); renderAll(); closeModal(); toast("Flag cleared.");
 }
+async function toggleHidden(){
+  const r = risks.find(x=>x.id===editingId);
+  if(!r || !isAdmin()) return;
+  const makeHidden = !r.hidden;
+  if(apiMode){
+    const {ok, data} = await apiCall("POST", "/api/risk/"+r.id+"/visibility", {hidden:makeHidden});
+    if(!ok){ toast(data.error||"Could not change visibility."); return; }
+    closeModal(); await refreshState({force:true});
+    toast(makeHidden ? "Risk hidden — only you and Julia can see it now." : "Risk made visible to all staff.");
+    return;
+  }
+  recordRiskChange(r, [{f:"hidden", from:!!r.hidden, to:makeHidden}]);
+  r.hidden = makeHidden;
+  persist(); renderAll(); closeModal();
+  toast(makeHidden ? "Risk hidden (local copy)." : "Risk made visible (local copy).");
+}
 
 function openRisk(id){
   if(risks.some(r=>r.id===id)) openModal(id);
@@ -1401,6 +1442,7 @@ async function saveRisk(){
     l2: document.getElementById("mArea").value,
     com: document.getElementById("mCom").value,
     flag: (prevRisk && prevRisk.flag) || null,
+    hidden: (prevRisk && prevRisk.hidden) || false,
     l: pickL, i: pickI,
     controls: document.getElementById("mControls").value.split("\n").map(s=>s.trim()).filter(Boolean),
     actions: document.getElementById("mActions").value.split("\n").map(s=>s.trim()).filter(Boolean),
@@ -1641,7 +1683,7 @@ async function saveSettings(){
 }
 
 /* ============ COMMITTEE PACK ============ */
-function packScope(com){ return com==="Board" ? liveList() : liveList().filter(r=>r.com===com); }
+function packScope(com){ return com==="Board" ? sharedList() : sharedList().filter(r=>r.com===com); }
 function renderPack(keepSince){
   const sel = document.getElementById("pCom");
   if(!sel.options.length) sel.innerHTML = Object.keys(COMMITTEES).map(c=>`<option value="${c}">${c} — ${COMMITTEES[c]}</option>`).join("");
@@ -1826,7 +1868,7 @@ function importJSON(input){
 function exportCSV(){
   const head = ["Ref","Title","Description","L1 category","L2 area","Owner","Committee","Likelihood","Impact","Score","Band","Appetite","Within appetite","Status","Next review","Controls","Actions","Draft","Last amended"];
   const q = v => `"${String(v==null?"":v).replace(/"/g,'""')}"`;
-  const rows = risks.map(r=>{
+  const rows = sharedList().map(r=>{          // hidden risks excluded from the shareable CSV
     const a = area(r);
     return [r.id,r.title,r.desc,a.cat.name,`${a.ref} ${a.name}`,a.cat.owner,r.com||"",r.l,r.i,score(r),band(score(r)),appetite(r).label,outsideAppetite(r)?"NO — outside":"Yes",r.status,r.review,(r.controls||[]).join("; "),(r.actions||[]).join("; "),r.draft?"Draft":"Confirmed",(r.updated||"").slice(0,10)].map(q).join(",");
   });

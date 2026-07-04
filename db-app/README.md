@@ -14,6 +14,9 @@ Cloudflare D1 database, behind staff-only Cloudflare Access.
 - `seed.mjs` — embedded 40-risk baseline + settings used to seed an empty DB.
 - `migrations/` — SQL schema + seed (kept for reference; the worker self-seeds).
 - `public/index.html` — the front-end (mirrors `risk-taxonomy/tcf-risk-register.html`).
+  Served over http(s) it is API-only; opened as a file it is a read-only offline
+  viewer (baseline snapshot + "View a backup" JSON loader). Its BASELINE literal
+  is generated from seed.mjs — regenerate with `node db-app/tools/sync-baseline.mjs`.
 - `wrangler.jsonc` — Worker config with the D1 binding.
 
 ## Status — ✅ DELIVERED (16 June 2026)
@@ -47,6 +50,7 @@ Cloudflare D1 database, behind staff-only Cloudflare Access.
 
 ## Tests
 `db-app/tests/e2e.mjs` runs the real front-end (jsdom) against the real Worker
-with an in-memory D1 mock — 19 checks covering identity, proposal/approval,
-hidden-risk enforcement and leak checks, and API failure handling.
+with an in-memory D1 mock — 27 checks covering identity, proposal/approval
+(edit, create, reject), hidden-risk enforcement and leak checks, API failure
+handling, baseline/seed drift, and the offline read-only viewer.
 Run: `JSDOM_PATH=<path-to-jsdom> node db-app/tests/e2e.mjs` (or `npm i jsdom` and run plain).

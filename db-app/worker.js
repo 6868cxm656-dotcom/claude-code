@@ -59,6 +59,12 @@ async function upsertRisk(env, r){
      ON CONFLICT(id) DO UPDATE SET committee=excluded.committee,l2=excluded.l2,updated=excluded.updated,pending_new=excluded.pending_new,data=excluded.data`
   ).bind(r.id, r.com, r.l2, r.updated||"", r.pendingNew?1:0, JSON.stringify(r)).run();
 }
+// Plain INSERT (no upsert) for new risks, so a concurrent create with the same id
+// fails with a constraint error instead of silently overwriting the other risk.
+async function insertRisk(env, r){
+  await env.DB.prepare("INSERT INTO risks (id,committee,l2,updated,pending_new,data) VALUES (?,?,?,?,?,?)")
+    .bind(r.id, r.com, r.l2, r.updated||"", r.pendingNew?1:0, JSON.stringify(r)).run();
+}
 async function removeRisk(env, id){ await env.DB.prepare("DELETE FROM risks WHERE id=?").bind(id).run(); }
 async function tombstone(env, t){
   await env.DB.prepare("INSERT OR REPLACE INTO deleted (id,deleted_at,data) VALUES (?,?,?)")
@@ -110,8 +116,21 @@ async function handleApi(req, env){
       return json({error:"This risk changed since you opened it — please reload.", code:409}, 409);
     const res = decideSave(role, prev, proposed, body.note, now);
     if(res.error) return json({error:res.error}, res.noop?200:res.code);
-    res.risk.id = id;
-    await upsertRisk(env, res.risk);
+    if(prev){
+      res.risk.id = id;
+      await upsertRisk(env, res.risk);
+    }else{
+      // retry with the next id on collision (two people creating at the same moment)
+      let newId = id, done = false;
+      for(let i=0; i<4 && !done; i++){
+        try{ res.risk.id = newId; await insertRisk(env, res.risk); done = true; }
+        catch(e){
+          if(/UNIQUE|constraint/i.test(String(e))) newId = "R" + String(parseInt(newId.slice(1),10)+1).padStart(2,"0");
+          else throw e;
+        }
+      }
+      if(!done) return json({error:"Could not allocate a risk id — please try again."}, 503);
+    }
     return json({ok:true, risk:res.risk, proposal:!!res.proposal});
   }
 

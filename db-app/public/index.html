@@ -236,6 +236,7 @@
   </div>
 </noscript>
 <div id="jsError" style="display:none;background:#fdecea;color:#A81B12;padding:14px 28px;font-weight:600"></div>
+<div id="apiBanner" style="display:none;background:#fff8e1;color:#7a5d00;padding:10px 28px;font-weight:600;border-bottom:1px solid #f0d98a"></div>
 <script>
 window.onerror = function(msg, src, line){
   var d = document.getElementById("jsError");
@@ -267,7 +268,7 @@ window.onerror = function(msg, src, line){
       <button class="btn-ghost" id="settingsBtn" style="display:none" onclick="openSettings()">⚙ Meetings &amp; contacts</button>
       <button class="btn-ghost" onclick="exportJSON(false)">Export all (JSON)</button>
       <button class="btn-ghost" id="exportMineBtn" onclick="exportJSON(true)" style="display:none">Export my areas</button>
-      <button class="btn-ghost" onclick="document.getElementById('importFile').click()">Import / merge</button>
+      <button class="btn-ghost" id="importBtn" onclick="document.getElementById('importFile').click()">Import / merge</button>
       <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(this)">
       <button class="btn-ghost" onclick="exportCSV()">CSV</button>
     </div>
@@ -458,7 +459,7 @@ window.onerror = function(msg, src, line){
   <!-- CHANGE REPORT -->
   <section id="view-changes" class="view">
     <div class="card chg-controls">
-      <h3>Change report <span class="hint">what moved between two dates — for Board and ARG papers</span></h3>
+      <h3>Change report <span class="hint">what moved between two dates — for Board and ARG papers · hidden risks are excluded</span></h3>
       <div class="filters no-print" style="margin-bottom:6px">
         <label for="chgFrom">Position as at end of</label>
         <input type="date" id="chgFrom" onchange="renderChanges()">
@@ -507,7 +508,7 @@ window.onerror = function(msg, src, line){
 </main>
 
 <footer>
-  Data is saved in this browser automatically. To share updates, use <strong>Export my areas</strong> (or Export all) and send the file; the recipient uses <strong>Import / merge</strong> — newer edits win per risk. <span id="resetWrap"><button class="btn-danger" style="padding:3px 10px;font-size:11.5px" onclick="resetBaseline()">Reset to baseline</button></span>
+  <span id="footNote">Data is saved in this browser automatically. To share updates, use <strong>Export my areas</strong> (or Export all) and send the file; the recipient uses <strong>Import / merge</strong> — newer edits win per risk.</span> <span id="resetWrap"><button class="btn-danger" style="padding:3px 10px;font-size:11.5px" onclick="resetBaseline()">Reset to baseline</button></span>
 </footer>
 
 <!-- MODAL -->
@@ -702,10 +703,12 @@ const BASELINE_RISKS = [
  {id:"R37", l2:"8.3", com:"ARGC", l:2, i:4, draft:true, title:"Personal data breach (UK GDPR)", desc:"A breach of personal data — Fellows, applicants, donors or staff — triggers ICO reporting, individual harm and reputational damage. Carved out of legacy R47/R51 as the portal increases data processing.", controls:["UK GDPR policies and training","Access controls and retention schedule"], actions:["DPIAs for the portal and AI tools before go-live"], review:"2026-08-31"},
  {id:"R38", l2:"8.4", com:"ARGC", l:3, i:4, draft:false, title:"Business continuity event", desc:"A pandemic, terrorism, fire or flood makes the office inaccessible or halts operations, affecting staff, Fellows' travel and suppliers. Legacy: R45, R46.", controls:["Business continuity plan — cloud systems and full work-from-home capability","Commercial and terrorism insurance","Pandemic procedures and Fellow travel guidance"], actions:["Refresh and test the BCP for the new office"], review:"2026-09-30"},
  {id:"R39", l2:"8.2", com:"ARGC", l:3, i:3, draft:true, title:"Systems unsuitable or data quality poor", desc:"Core systems are unsuitable, poorly integrated or hold poor-quality data, creating inefficiency and weak reporting.", controls:["Systems roadmap","Data quality standards in CRM"], actions:["Data quality baseline ahead of portal integration"], review:"2026-10-31"},
- {id:"R40", l2:"8.5", com:"ARGC", l:2, i:3, draft:true, title:"Critical supplier or third-party failure", desc:"A critical supplier or third party — IT provider, investment platform, venue or consultant — fails, under-performs or creates a security or compliance exposure. Legacy: R44 (part; score to confirm).", controls:["Contracts with SLAs for key suppliers","Due diligence at onboarding"], actions:["Map critical suppliers and contingency options"], review:"2026-12-31"}
+ {id:"R40", l2:"8.5", com:"ARGC", l:2, i:3, draft:true, title:"Critical supplier or third-party failure", desc:"A critical supplier or third party — IT provider, investment platform, venue or consultant — fails, under-performs or creates a security or compliance exposure. Legacy: R44 (part; score to confirm).", controls:["Contracts with SLAs for key suppliers","Due diligence at onboarding"], actions:["Map critical suppliers and contingency options"], review:"2026-12-31"},
+ {id:"R41", l2:"7.2", com:"Board", l:3, i:4, draft:true, hidden:true, title:"Portal not ready for go-live on time", desc:"The new Fellowship portal misses its planned go-live date — key build, integration or testing milestones slip — delaying dependent work and the benefits the investment depends on.", controls:["Project plan with milestone gates and a critical path","Weekly delivery tracking against the go-live date","Schedule contingency held"], actions:["Confirm the go-live date and critical path with the supplier","Agree a fallback plan if the date slips"], review:"2026-08-31"}
 ].map(r => ({...r, status:"Open", updated:BASE, created:BASE, history:[{at:BASE, by:"baseline", created:true}]}));
 
 /* ============ STATE ============ */
+const APP_VERSION = "v2026-06-17";
 const LS_KEY = "tcf-risk-register-v2";
 const TODAY = new Date().toISOString().slice(0,10);
 /* Some browsers/contexts (strict privacy modes, sandboxed viewers) throw on any
@@ -735,6 +738,7 @@ let settings = loaded.settings;
 let role = store.get(LS_KEY+"-role") || "viewer";
 if(role==="lead") role = "viewer";                    // legacy role removed
 let identityEmail = null;                              // set when served behind Cloudflare Access
+let saveInFlight = false;
 let sortKey = "score", sortDir = -1;
 let editingId = null, pickL = 3, pickI = 3;
 
@@ -790,11 +794,31 @@ function persist(){ store.set(LS_KEY, JSON.stringify({risks, deleted: deletedRis
    /api and the server enforces permissions. When opened as a local file (no API),
    apiMode stays false and the app falls back to per-browser localStorage. */
 let apiMode = false;
+function setApiBanner(msg){
+  const b = document.getElementById("apiBanner");
+  if(!b) return;
+  if(msg){ b.textContent = "⚠ " + msg; b.style.display = ""; }
+  else b.style.display = "none";
+}
+/* Every API call must fail loudly, never silently: a network error, or Cloudflare
+   Access serving its login page instead of JSON (expired sign-in session), used to
+   make buttons appear to do nothing. Both now surface a clear banner + error. */
 async function apiCall(method, path, body){
-  const res = await fetch(path, {method, headers:{"content-type":"application/json"},
-    credentials:"include", body: body ? JSON.stringify(body) : undefined});
-  let data = {}; try{ data = await res.json(); }catch(e){}
-  return {ok:res.ok, status:res.status, data};
+  try{
+    const res = await fetch(path, {method, headers:{"content-type":"application/json"},
+      credentials:"include", body: body ? JSON.stringify(body) : undefined});
+    const ct = res.headers.get("content-type") || "";
+    if(!ct.includes("application/json")){
+      setApiBanner("Your sign-in session has expired — reload this page to sign in again.");
+      return {ok:false, status:res.status, data:{error:"Sign-in session expired — reload the page, then retry."}};
+    }
+    let data = {}; try{ data = await res.json(); }catch(e){}
+    setApiBanner(null);
+    return {ok:res.ok, status:res.status, data};
+  }catch(e){
+    setApiBanner("Can't reach the shared register — check your connection, or reload the page to sign in again.");
+    return {ok:false, status:0, data:{error:"Can't reach the shared register — reload the page and try again."}};
+  }
 }
 function applyMe(me){
   role = me.role || "viewer";
@@ -809,20 +833,24 @@ function applyMe(me){
   document.getElementById("addBtn").style.display = (role==="viewer") ? "none" : "";
   document.getElementById("settingsBtn").style.display = isAdmin() ? "" : "none";
   const fh = document.getElementById("fHidden"); if(fh) fh.style.display = isAdmin() ? "" : "none";
+  // shared mode: import/merge and reset belong to the offline file only
+  const ib = document.getElementById("importBtn"); if(ib) ib.style.display = "none";
+  const rw = document.getElementById("resetWrap"); if(rw) rw.style.display = "none";
+  const fn = document.getElementById("footNote");
+  if(fn) fn.textContent = "Live shared register — every change saves to the shared database for everyone. Export gives a JSON backup snapshot. " + APP_VERSION;
 }
 async function refreshState(opts){
-  if(!apiMode) return;
+  if(!apiMode) return false;
   opts = opts || {};
   // don't clobber an open editor/settings panel unless forced (e.g. straight after a save)
   if(!opts.force && (document.getElementById("overlay").classList.contains("open")
-      || document.getElementById("settingsOverlay").classList.contains("open"))) return;
-  try{
-    const {ok, data} = await apiCall("GET","/api/state");
-    if(!ok || !data.risks) return;
-    risks = data.risks; deletedRisks = data.deleted || []; settings = mergeSettings(data.settings);
-    if(data.me) applyMe(data.me);
-    renderAll();
-  }catch(e){}
+      || document.getElementById("settingsOverlay").classList.contains("open"))) return false;
+  const {ok, data} = await apiCall("GET","/api/state");
+  if(!ok || !Array.isArray(data.risks)) return false;
+  risks = data.risks; deletedRisks = data.deleted || []; settings = mergeSettings(data.settings);
+  if(data.me) applyMe(data.me);
+  renderAll();
+  return true;
 }
 
 /* ============ HELPERS ============ */
@@ -930,12 +958,14 @@ function rewind(r, cutoff){
     .forEach(h=> h.changes.forEach(ch=>{ c[ch.f] = ch.from; }));
   return c;
 }
-/* Register state (incl. since-deleted risks) as at end of the given day. Returns map id->risk. */
+/* Register state (incl. since-deleted risks) as at end of the given day. Returns map id->risk.
+   Currently-hidden risks are excluded even for admins: this feeds the change report and
+   committee-pack change logs, which get printed and circulated. */
 function stateAt(dateStr){
   const cutoff = dateStr + "T23:59:59.999Z";
   const out = {};
-  liveList().forEach(r=>{ const s = rewind(r, cutoff); if(s) out[s.id] = s; });
-  deletedRisks.forEach(d=>{ if((d.deletedAt||"") > cutoff){ const s = rewind(d, cutoff); if(s) out[s.id] = s; } });
+  liveList().filter(r=>!r.hidden).forEach(r=>{ const s = rewind(r, cutoff); if(s) out[s.id] = s; });
+  deletedRisks.filter(d=>!d.hidden).forEach(d=>{ if((d.deletedAt||"") > cutoff){ const s = rewind(d, cutoff); if(s) out[s.id] = s; } });
   return out;
 }
 function entriesBetween(r, a, b){
@@ -1039,7 +1069,7 @@ function riskRowMini(r){
   const a = area(r);
   return `<div class="item" onclick="openModal('${r.id}')">
     <div class="score" style="background:${bandHex(score(r))}">${score(r)}</div>
-    <div><div class="ti">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.flag?'<span class="tag tag-flag">🚩 review</span>':""}</div>
+    <div><div class="ti">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.hidden?'<span class="tag tag-hidden">🙈 hidden</span>':""}${r.flag?'<span class="tag tag-flag">🚩 review</span>':""}</div>
     <div class="meta">${esc(a.cat.name)} · ${esc(a.name)} · ${esc(r.com||"")} · appetite: ${appetite(r).label}${outsideAppetite(r)?' · <span class="breach-flag">outside appetite</span>':""}</div></div></div>`;
 }
 
@@ -1453,20 +1483,26 @@ async function saveRisk(){
   if(!canEditArea(obj.l2)){ toast("You can only save risks in your own areas."); return; }
   const admin = isAdmin();
   if(apiMode){
-    let note = "";
-    if(!admin){ note = (prompt(editingId ? "Optional note for Jim/Julia explaining this change:"
-                                          : "Optional note for Jim/Julia explaining this new risk:") || "").trim(); }
-    const payload = {...obj}; if(!editingId) delete payload.id;   // let the server assign new ids
-    const {ok, status, data} = await apiCall("POST", "/api/risk",
-      {risk:payload, baseUpdated: prevRisk ? prevRisk.updated : undefined, note});
-    if(!ok){
-      if(status===409){ toast("This risk changed since you opened it — reloading."); closeModal(); await refreshState({force:true}); return; }
-      toast(data.error || "Could not save."); return;
-    }
-    closeModal(); await refreshState({force:true});
-    if(data.proposal){ notifyAdmins(data.risk, editingId ? "edit" : "new", note);
-      toast(editingId ? "Change proposed — sent to Jim/Julia for QA." : "New risk proposed — sent to Jim/Julia for QA."); }
-    else toast(`${data.risk.id} saved (live).`);
+    if(saveInFlight) return;                                       // double-click protection
+    saveInFlight = true;
+    const saveBtn = document.getElementById("mSave");
+    saveBtn.disabled = true;
+    try{
+      let note = "";
+      if(!admin){ note = (prompt(editingId ? "Optional note for Jim/Julia explaining this change:"
+                                            : "Optional note for Jim/Julia explaining this new risk:") || "").trim(); }
+      const payload = {...obj}; if(!editingId) delete payload.id;   // let the server assign new ids
+      const {ok, status, data} = await apiCall("POST", "/api/risk",
+        {risk:payload, baseUpdated: prevRisk ? prevRisk.updated : undefined, note});
+      if(!ok){
+        if(status===409){ toast("This risk changed since you opened it — reloading."); closeModal(); await refreshState({force:true}); return; }
+        toast(data.error || "Could not save."); return;
+      }
+      closeModal(); await refreshState({force:true});
+      if(data.proposal){ notifyAdmins(data.risk, editingId ? "edit" : "new", note);
+        toast(editingId ? "Change proposed — sent to Jim/Julia for QA." : "New risk proposed — sent to Jim/Julia for QA."); }
+      else toast(`${data.risk.id} saved (live).`);
+    } finally { saveInFlight = false; saveBtn.disabled = false; }
     return;
   }
   const idx = risks.findIndex(r=>r.id===obj.id);
@@ -1780,15 +1816,18 @@ function download(name, text, type){
   setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
 }
 function exportJSON(mineOnly){
-  let data = risks, del = deletedRisks;
+  // Admins' full export is the backup, so it includes hidden risks (counted in the
+  // toast); anything a non-admin can export never contains hidden risks.
+  let data = risks.filter(visibleToMe), del = deletedRisks.filter(visibleToMe);
   if(mineOnly){
-    data = risks.filter(r=>ownerFirst(area(r).cat.owner)===role);
-    del = deletedRisks.filter(r=>AREA_MAP[r.l2] && ownerFirst(area(r).cat.owner)===role);
+    data = data.filter(r=>ownerFirst(area(r).cat.owner)===role);
+    del = del.filter(r=>AREA_MAP[r.l2] && ownerFirst(area(r).cat.owner)===role);
     if(!data.length && !del.length){ toast("No risks in your areas yet."); return; }
   }
   const payload = { format:"tcf-risk-register", version:3, exported:new Date().toISOString(), exportedBy: role, risks:data, deleted:del, settings };
   download(`tcf-risk-register${mineOnly?"-"+role.toLowerCase():""}-${TODAY}.json`, JSON.stringify(payload,null,2), "application/json");
-  toast(`Exported ${data.length} risk${data.length===1?"":"s"}.`);
+  const hid = data.filter(r=>r.hidden).length;
+  toast(`Exported ${data.length} risk${data.length===1?"":"s"}${hid?` — includes ${hid} hidden`:""}.`);
 }
 /* Union of two histories, deduped by timestamp+author, oldest first. */
 function unionHistory(a, b){
@@ -1896,22 +1935,18 @@ renderRubric("rubricOverview");
 renderRubric("rubricModal");
 
 async function init(){
-  // Prefer the shared database (served by the Worker). Fall back to the local
-  // per-browser copy when opened as a standalone file.
+  // Served over http(s) = the shared register. Never silently fall back to the
+  // local per-browser copy there: stale local data masquerading as live data is
+  // worse than an honest error. Local mode is only for the offline file (file://).
   if(window.fetch && location.protocol.startsWith("http")){
-    try{
-      const {ok, data} = await apiCall("GET", "/api/state");
-      if(ok && data && Array.isArray(data.risks)){
-        apiMode = true;
-        risks = data.risks; deletedRisks = data.deleted || []; settings = mergeSettings(data.settings);
-        applyMe(data.me || {role:"viewer", admin:false, email:""});
-        renderAll();
-        // keep everyone roughly in sync: refresh on focus and on a light poll
-        window.addEventListener("focus", ()=>refreshState());
-        setInterval(()=>refreshState(), 45000);
-        return;
-      }
-    }catch(e){}
+    apiMode = true;
+    window.addEventListener("focus", ()=>refreshState());
+    setInterval(()=>refreshState(), 45000);
+    const okFirst = await refreshState({force:true});
+    if(!okFirst){
+      const retry = setInterval(async ()=>{ if(await refreshState({force:true})) clearInterval(retry); }, 15000);
+    }
+    return;
   }
   document.getElementById("role").value = role;
   setRole(role);

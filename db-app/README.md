@@ -44,3 +44,9 @@ Cloudflare D1 database, behind staff-only Cloudflare Access.
 - `DELETE /api/risk/:id` — admin live; owner → deletion proposal
 - `POST /api/proposal/:id/approve` · `/reject` — admins only
 - `PUT /api/settings` — admins only
+
+## Tests
+`db-app/tests/e2e.mjs` runs the real front-end (jsdom) against the real Worker
+with an in-memory D1 mock — 19 checks covering identity, proposal/approval,
+hidden-risk enforcement and leak checks, and API failure handling.
+Run: `JSDOM_PATH=<path-to-jsdom> node db-app/tests/e2e.mjs` (or `npm i jsdom` and run plain).

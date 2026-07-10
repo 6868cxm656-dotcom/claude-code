@@ -2,9 +2,9 @@
 // Sits behind Cloudflare Access; reads the authenticated staff email it injects,
 // derives the role server-side, and enforces the proposal/approval rules.
 import {
-  roleFor, isAdmin, canEditArea, COMMITTEES, EMAIL_TO_PERSON,
+  roleFor, isAdmin, canEditArea, COMMITTEES, EMAIL_TO_PERSON, CAT_OWNER,
   decideSave, decideDelete, applyApprove, applyReject, applyFlag, applyClearFlag,
-  decideMilestoneSave
+  decideMilestoneSave, applyAccessConfig, validateAccessConfig, peopleFromConfig
 } from "./logic.mjs";
 import { SEED_RISKS, SEED_SETTINGS, SEED_MILESTONES } from "./seed.mjs";
 
@@ -104,14 +104,34 @@ async function nextId(env){
   return "R" + String(n+1).padStart(2,"0");
 }
 
+async function loadAccess(env){
+  const row = await env.DB.prepare("SELECT v FROM settings WHERE k='access'").first();
+  return row ? JSON.parse(row.v) : null;
+}
+
 async function handleApi(req, env){
   await ensureInit(env);
   await ensureExtras(env);
   await ensureMilestones(env);
+  // Apply the stored access config (or defaults) so every rule below uses it.
+  const accessCfg = await loadAccess(env);
+  applyAccessConfig(accessCfg);
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/,"");
   const email = emailFromRequest(req);
-  const role = roleFor(email);
+  const realRole = roleFor(email);
+  // "View as": admins may preview another user's read view. Honoured ONLY on
+  // GET /api/state — every write route keeps the real identity.
+  let role = realRole, viewAs = null;
+  if(path==="/api/state" && req.method==="GET" && isAdmin(realRole)){
+    const va = url.searchParams.get("viewAs");
+    if(va){
+      const people = peopleFromConfig(accessCfg);
+      const hit = people.find(p=>p.name===va && p.group!=="viewer");
+      role = hit ? hit.name : "viewer";
+      viewAs = va;
+    }
+  }
   const now = new Date().toISOString();
   const body = req.method==="GET" ? {} : await req.json().catch(()=>({}));
 
@@ -130,7 +150,10 @@ async function handleApi(req, env){
       deleted: delRows,
       milestones: (ms.results||[]).map(x=>JSON.parse(x.data)),
       settings: st ? JSON.parse(st.v) : {},
-      me: {email, role, admin: isAdmin(role)}
+      people: peopleFromConfig(accessCfg),                 // staff directory for dropdowns/emails
+      catOwner: {...CAT_OWNER},                            // effective area ownership
+      access: isAdmin(realRole) ? (accessCfg || null) : undefined,
+      me: {email, role, admin: isAdmin(role), realRole, realAdmin: isAdmin(realRole), viewAs}
     });
   }
 
@@ -231,6 +254,17 @@ async function handleApi(req, env){
     const s = body.settings || {}; s.updated = now;
     await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('global',?)").bind(JSON.stringify(s)).run();
     return json({ok:true, settings:s});
+  }
+
+  // access config — admins only, with lockout guards
+  if(path==="/api/access" && req.method==="PUT"){
+    if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    const cfg = body.access || {};
+    const err = validateAccessConfig(cfg, realRole);
+    if(err) return json({error:err}, 400);
+    cfg.updated = now; cfg.updatedBy = realRole;
+    await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('access',?)").bind(JSON.stringify(cfg)).run();
+    return json({ok:true, access:cfg});
   }
 
   return json({error:"Not found"}, 404);

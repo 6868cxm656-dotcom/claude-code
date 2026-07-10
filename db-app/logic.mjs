@@ -150,3 +150,53 @@ export function decideMilestoneSave(role, prev, proposed, note, now){
     history:[{at:now, by:role, created:true}].concat(note?[{at:now, by:role, note}]:[])};
   return {milestone:base};
 }
+
+/* ============ ACCESS CONFIG (editable via the Access module) ============ */
+// Defaults captured once; applyAccessConfig resets to them before applying an
+// override, so deleting the stored config cleanly restores the original model.
+const DEFAULT_EMAILS = {...EMAIL_TO_PERSON};
+const DEFAULT_ADMINS = [...ADMINS];
+const DEFAULT_CAT = {...CAT_OWNER};
+export function defaultAccessConfig(){
+  return {
+    users: Object.entries(DEFAULT_EMAILS).map(([email,name])=>({email, name, group: DEFAULT_ADMINS.includes(name) ? "admin" : "editor"})),
+    catOwner: {...DEFAULT_CAT},
+    updated: null
+  };
+}
+export function applyAccessConfig(cfg){
+  Object.keys(EMAIL_TO_PERSON).forEach(k=>delete EMAIL_TO_PERSON[k]);
+  Object.assign(EMAIL_TO_PERSON, DEFAULT_EMAILS);
+  ADMINS.length = 0; DEFAULT_ADMINS.forEach(a=>ADMINS.push(a));
+  Object.assign(CAT_OWNER, DEFAULT_CAT);
+  if(!cfg || !Array.isArray(cfg.users) || !cfg.users.length) return;
+  Object.keys(EMAIL_TO_PERSON).forEach(k=>delete EMAIL_TO_PERSON[k]);
+  ADMINS.length = 0;
+  for(const u of cfg.users){
+    if(!u || !u.email || !u.name) continue;
+    if(u.group!=="viewer") EMAIL_TO_PERSON[String(u.email).toLowerCase()] = u.name;  // viewers resolve to role "viewer"
+    if(u.group==="admin" && !ADMINS.includes(u.name)) ADMINS.push(u.name);
+  }
+  if(cfg.catOwner) Object.entries(cfg.catOwner).forEach(([c,o])=>{ if(CAT_OWNER[c]!==undefined && o) CAT_OWNER[c] = o; });
+}
+export function validateAccessConfig(cfg, requesterName){
+  if(!cfg || !Array.isArray(cfg.users) || !cfg.users.length) return "At least one user is required";
+  for(const u of cfg.users){
+    if(!u.email || !String(u.email).includes("@")) return "Every user needs a valid email";
+    if(!u.name || !String(u.name).trim()) return "Every user needs a name";
+    if(!["admin","editor","viewer"].includes(u.group)) return "Group must be admin, editor or viewer";
+  }
+  const emails = cfg.users.map(u=>String(u.email).toLowerCase());
+  if(new Set(emails).size !== emails.length) return "Duplicate email in user list";
+  const admins = cfg.users.filter(u=>u.group==="admin").map(u=>u.name);
+  if(!admins.length) return "At least one admin is required — you would be locked out";
+  if(requesterName && !admins.includes(requesterName)) return "You cannot remove your own admin access";
+  const editable = new Set(cfg.users.filter(u=>u.group!=="viewer").map(u=>u.name));
+  for(const [c,o] of Object.entries(cfg.catOwner||{}))
+    if(o && !editable.has(o)) return `Area owner "${o}" is not an admin or editor in the user list`;
+  return null;
+}
+export function peopleFromConfig(cfg){
+  const c = (cfg && Array.isArray(cfg.users) && cfg.users.length) ? cfg : defaultAccessConfig();
+  return c.users.map(u=>({name:u.name, group:u.group, email:u.email}));
+}

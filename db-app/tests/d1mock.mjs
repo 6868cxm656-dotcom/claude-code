@@ -18,7 +18,11 @@ export function makeDB(){
     }
     if(/^DELETE FROM risks WHERE id=\?/i.test(sql)){ risks.delete(args[0]); return {}; }
     if(/^INSERT OR REPLACE INTO deleted/i.test(sql)){ const [id,da,data]=args; deleted.set(id,{id,deleted_at:da,data}); return {}; }
-    if(/^INSERT OR REPLACE INTO settings/i.test(sql)){ settings.set('global', args[0]); return {}; }
+    if(/^INSERT OR REPLACE INTO settings/i.test(sql)){
+      const km = sql.match(/VALUES \('(\w+)'/); const key = km ? km[1] : 'global';
+      const lit = sql.match(/VALUES \('\w+','([^']*)'\)/);
+      settings.set(key, args.length ? args[0] : (lit ? lit[1] : ''));
+      return {}; }
     return {};
   }
   function first(sql,args){
@@ -27,7 +31,8 @@ export function makeDB(){
     if(/SELECT COUNT\(\*\) AS n FROM milestones/i.test(sql)) return {n:milestones.size};
     if(/SELECT data FROM milestones WHERE id=\?/i.test(sql)){ const r=milestones.get(args[0]); return r?{data:r.data}:null; }
     if(/SELECT data FROM risks WHERE id=\?/i.test(sql)){ const r=risks.get(args[0]); return r?{data:r.data}:null; }
-    if(/SELECT v FROM settings WHERE k='global'/i.test(sql)){ const v=settings.get('global'); return v?{v}:null; }
+    const skm = sql.match(/SELECT v FROM settings WHERE k='(\w+)'/i);
+    if(skm){ const v=settings.get(skm[1]); return (v!==undefined && v!=='')?{v}:null; }
     return null;
   }
   function all(sql){

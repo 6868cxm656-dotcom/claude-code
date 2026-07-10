@@ -234,5 +234,67 @@ import { SEED_MILESTONES } from '../seed.mjs';
   ok(d(jim).getElementById('view-overview').textContent.includes('generated live'), 'Overview points to Home');
 }
 
+
+// --- view-as + access control module ---
+{
+  // server: admin viewAs strips hidden and reports impersonation
+  const va = await (await worker.fetch(new Request('https://tcf.example/api/state?viewAs=Nikesh',
+    {headers:{'Cf-Access-Authenticated-User-Email':JIM}}), env)).json();
+  ok(!va.risks.find(r=>r.id==='R41'), 'viewAs=Nikesh strips hidden R41 for Jim');
+  ok(va.me.viewAs==='Nikesh' && va.me.admin===false && va.me.realAdmin===true, 'viewAs identity fields');
+  // non-admin viewAs is ignored
+  const nva = await (await worker.fetch(new Request('https://tcf.example/api/state?viewAs=Jim',
+    {headers:{'Cf-Access-Authenticated-User-Email':NIK}}), env)).json();
+  ok(!nva.me.viewAs && nva.me.role==='Nikesh', 'non-admin viewAs ignored');
+  // people + catOwner in state; access only for admins
+  const js = await state(JIM);
+  ok(Array.isArray(js.people) && js.people.length>=5 && js.catOwner['2']==='Nikesh', 'people + catOwner in state');
+  const ns = await state(NIK);
+  ok(ns.access===undefined, 'raw access config hidden from non-admins');
+
+  // PUT /api/access walls
+  const put = (email, cfg) => worker.fetch(new Request('https://tcf.example/api/access',
+    {method:'PUT', headers:{'Cf-Access-Authenticated-User-Email':email,'content-type':'application/json'},
+     body:JSON.stringify({access:cfg})}), env);
+  const baseUsers = js.people.map(p=>({email:p.email, name:p.name, group:p.group}));
+  ok((await put(NIK, {users:baseUsers, catOwner:js.catOwner})).status===403, 'access PUT admin-only');
+  ok((await put(JIM, {users:baseUsers.map(u=>({...u, group:'editor'})), catOwner:js.catOwner})).status===400, 'lockout guard: no admins rejected');
+  ok((await put(JIM, {users:baseUsers.map(u=>u.name==='Jim'?{...u,group:'editor'}:u), catOwner:js.catOwner})).status===400, 'cannot demote yourself');
+  // valid change: add Katherine as editor and give her category 3
+  const newUsers = baseUsers.concat([{email:'katherine.x@churchillfellowship.org', name:'Katherine', group:'editor'}]);
+  const okPut = await put(JIM, {users:newUsers, catOwner:{...js.catOwner, "3":"Katherine"}});
+  ok(okPut.status===200, 'valid access config accepted');
+  const kState = await state('katherine.x@churchillfellowship.org');
+  ok(kState.me.role==='Katherine' && kState.catOwner['3']==='Katherine', 'new user recognised; area 3 reassigned');
+  // Katherine can now propose in area 3
+  const kPost = await worker.fetch(new Request('https://tcf.example/api/risk',
+    {method:'POST', headers:{'Cf-Access-Authenticated-User-Email':'katherine.x@churchillfellowship.org','content-type':'application/json'},
+     body:JSON.stringify({risk:{l2:'3.1', com:'Board', l:2, i:2, title:'Katherine test risk', desc:'x', controls:[], actions:[], status:'Open', review:'', draft:true}})}), env);
+  const kj = await kPost.json();
+  ok(kPost.status===200 && kj.proposal===true, 'reassigned owner can propose in area 3');
+  // restore original config for later tests
+  ok((await put(JIM, {users:baseUsers, catOwner:js.catOwner})).status===200, 'config restored');
+
+  // front-end: view-as flow
+  await jim.refreshState({force:true}); await sleep(60);
+  ok(d(jim).getElementById('viewAsSel').style.display==='', 'view-as selector visible for admin');
+  ok(d(nik).getElementById('viewAsSel').style.display==='none', 'selector hidden for non-admin');
+  jim.setViewAs('Nikesh'); await sleep(250);
+  ok(d(jim).getElementById('vaBanner').style.display==='', 'view-as banner shown');
+  ok(!d(jim).querySelector('#regBody').innerHTML.includes('R41'), 'hidden risk gone in view-as');
+  ok(d(jim).getElementById('mod-access').style.display==='none', 'Access module hidden in view-as');
+  await jim.saveRisk();
+  ok(d(jim).getElementById('toast').textContent.includes('read-only preview'), 'writes blocked in view-as');
+  jim.setViewAs(''); await sleep(250);
+  ok(d(jim).getElementById('vaBanner').style.display==='none', 'exit restores normal mode');
+  ok(d(jim).querySelector('#regBody').innerHTML.includes('R41'), 'hidden risk back after exit');
+
+  // front-end: access module renders
+  jim.showModule('access');
+  ok(d(jim).querySelectorAll('#accUsers tr').length>=5, 'access users table renders');
+  ok(d(jim).querySelectorAll('#accCats .enabler-tile').length===8, '8 ownership tiles');
+  ok(d(jim).querySelectorAll('#accMatrix tbody tr').length===10, 'capability matrix 10 rows');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

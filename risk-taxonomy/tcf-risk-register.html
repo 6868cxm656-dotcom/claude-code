@@ -207,6 +207,27 @@
   .pbar{height:7px;border-radius:99px;background:#f1edec;overflow:hidden;margin-top:6px}
   .pbar>div{height:100%;border-radius:99px}
   @media(max-width:760px){.ms-row{grid-template-columns:80px 1fr}.ms-side{display:none}}
+  /* milestone timeline */
+  .tl-wrap{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;overflow-x:auto}
+  .tl-legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;font-weight:600;color:var(--muted)}
+  .tl-legend .li{display:flex;align-items:center;gap:6px}
+  .tl-months{display:grid;grid-template-columns:repeat(12,1fr);margin-left:190px;font-size:10.5px;font-weight:700;color:var(--muted);text-align:center}
+  .tl-lane{display:grid;grid-template-columns:190px 1fr;align-items:stretch;border-top:1px solid var(--line)}
+  .tl-label{font-size:11.5px;font-weight:700;padding:10px 10px 10px 0;color:var(--ink)}
+  .tl-track{position:relative;background:
+    repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px calc(100%/12));min-height:44px}
+  .tl-dot{position:absolute;width:20px;height:20px;border-radius:50%;transform:translate(-50%,0);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;
+    box-shadow:0 0 0 2px #fff;transition:transform .1s}
+  .tl-dot:hover{transform:translate(-50%,0) scale(1.25);z-index:5}
+  .tl-id{position:absolute;transform:translateX(-50%);font-size:9px;font-weight:700;color:var(--muted);margin-top:21px}
+  .tl-today{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--red);opacity:.7}
+  .tl-today span{position:absolute;top:-2px;left:4px;font-size:9px;font-weight:800;color:var(--red)}
+  #tlTip{position:fixed;display:none;z-index:99;background:var(--ink);color:#fff;border-radius:9px;padding:8px 12px;
+    font-size:12px;max-width:280px;box-shadow:0 8px 30px rgba(0,0,0,.35);pointer-events:none}
+  #tlTip b{display:block;margin-bottom:2px}
+  .viewtoggle button{background:#f1edec;color:var(--muted);font-size:12.5px;padding:6px 12px}
+  .viewtoggle button.active{background:var(--red);color:#fff}
 
   /* change report */
   .delta{font-weight:800;font-size:12px;white-space:nowrap}
@@ -348,7 +369,13 @@ window.onerror = function(msg, src, line){
       <button class="btn-primary" id="msAddBtn" onclick="openMilestone(null)">＋ Add milestone</button>
     </div>
     <div class="kpis" id="msKpis"></div>
+    <div class="filters no-print viewtoggle" style="margin-bottom:10px">
+      <button id="msViewList" class="active" onclick="setMsView('list')">☰ List</button>
+      <button id="msViewTl" onclick="setMsView('timeline')">📅 Timeline</button>
+    </div>
     <div id="msBody"></div>
+    <div id="msTimeline" style="display:none"></div>
+    <div id="tlTip"></div>
     <p class="floor-note">Year-1 milestones are an AI-drafted starting set (marked DRAFT) built from the SOAP, the leadership team's priority tracker and the Portal/Salesforce rebuild decision — owners to confirm, amend or replace. Updates by owners go live immediately (no QA gate).</p>
   </section>
 
@@ -1909,6 +1936,64 @@ function renderHome(){
 /* ============ MILESTONES MODULE ============ */
 let editingMs = null, msInFlight = false;
 function canEditMs(m){ return role!=="viewer" && (isAdmin() || m.owner===role); }
+let msView = "list";
+function setMsView(v){
+  msView = v;
+  document.getElementById("msViewList").classList.toggle("active", v==="list");
+  document.getElementById("msViewTl").classList.toggle("active", v==="timeline");
+  renderMilestones();
+}
+const FY_START = "2026-10-01", FY_MONTHS = ["Oct","Nov","Dec","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep"];
+function tlX(due){ // % across the FY (clamped)
+  const t0 = Date.parse(FY_START), t1 = Date.parse("2027-10-01");
+  const t = Date.parse(due || FY_START);
+  return Math.max(0.8, Math.min(99.2, (t - t0) / (t1 - t0) * 100));
+}
+function ragGlyph(rag){ return rag==="Done" ? "✓" : rag==="Off track" ? "✕" : rag==="At risk" ? "!" : ""; }
+function tlTipShow(ev, id){
+  const m = milestones.find(x=>x.id===id); if(!m) return;
+  const tip = document.getElementById("tlTip");
+  tip.innerHTML = `<b>${m.id} · ${esc(m.title)}</b>${esc(m.rag)} · ${m.progress||0}% · due ${m.due||"—"}<br>${esc(m.owner)} · ${esc(soapLabel(m.soap))}`;
+  tip.style.display = "block";
+  const r = ev.target.closest(".tl-dot").getBoundingClientRect();
+  tip.style.left = Math.min(window.innerWidth-300, r.left+14) + "px";
+  tip.style.top = (r.top - 8 - tip.offsetHeight) + "px";
+}
+function tlTipHide(){ document.getElementById("tlTip").style.display = "none"; }
+function renderTimeline(list){
+  const el = document.getElementById("msTimeline");
+  const lanes = SOAP_ORDER.filter(ref=>list.some(m=>m.soap===ref));
+  let h = `<div class="tl-wrap">
+    <div class="tl-legend">
+      ${["On track","At risk","Off track","Done"].map(k=>`<span class="li"><span class="tl-dot" style="position:static;transform:none;width:16px;height:16px;font-size:9px;background:${ragColor(k)}">${ragGlyph(k)}</span>${k}</span>`).join("")}
+      <span class="li" style="margin-left:auto">Financial year 2026-27 · click a dot to open</span>
+    </div>
+    <div class="tl-months">${FY_MONTHS.map(m=>`<span>${m}</span>`).join("")}</div>`;
+  const todayX = (TODAY>=FY_START && TODAY<"2027-10-01") ? tlX(TODAY) : null;
+  for(const ref of lanes){
+    const group = list.filter(m=>m.soap===ref).sort((a,b)=>(a.due||"").localeCompare(b.due||""));
+    // collision rows: nudge dots that land within 4% of each other
+    const rowsEnd = [];
+    const placed = group.map(m=>{
+      const x = tlX(m.due);
+      let row = 0;
+      while(rowsEnd[row]!==undefined && x - rowsEnd[row] < 4.2) row++;
+      rowsEnd[row] = x;
+      return {m, x, row};
+    });
+    const laneH = 14 + (Math.max(0,...placed.map(p=>p.row))+1)*36;
+    h += `<div class="tl-lane"><div class="tl-label">${esc(soapLabel(ref))}</div>
+      <div class="tl-track" style="height:${laneH}px">
+      ${todayX!==null?`<div class="tl-today" style="left:${todayX}%"><span>today</span></div>`:""}
+      ${placed.map(p=>`
+        <div class="tl-dot" style="left:${p.x}%;top:${8+p.row*36}px;background:${ragColor(p.m.rag)}"
+             onclick="openMilestone('${p.m.id}')" onmouseenter="tlTipShow(event,'${p.m.id}')" onmouseleave="tlTipHide()"
+             aria-label="${esc(p.m.id)} ${esc(p.m.title)} — ${esc(p.m.rag)}">${ragGlyph(p.m.rag)}</div>
+        <div class="tl-id" style="left:${p.x}%;top:${8+p.row*36}px">${p.m.id}</div>`).join("")}
+      </div></div>`;
+  }
+  el.innerHTML = h + `</div>`;
+}
 function renderMilestones(){
   const body = document.getElementById("msBody"); if(!body) return;
   const fo = document.getElementById("msOwner");
@@ -1933,6 +2018,9 @@ function renderMilestones(){
       </div>`;
     }).join("") + `</div>`;
   }).join("") || '<div class="none-msg">No milestones match these filters.</div>';
+  document.getElementById("msBody").style.display = msView==="list" ? "" : "none";
+  document.getElementById("msTimeline").style.display = msView==="timeline" ? "" : "none";
+  if(msView==="timeline") renderTimeline(list);
 }
 function openMilestone(id){
   editingMs = id;

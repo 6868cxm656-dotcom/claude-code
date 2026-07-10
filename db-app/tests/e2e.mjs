@@ -124,5 +124,69 @@ ok(d(off).getElementById('importBtn').style.display==='', 'offline: View a backu
 off.openModal('R07');
 ok(d(off).getElementById('mSave').style.display==='none' && d(off).getElementById('mHide').style.display==='none', 'offline modal fully read-only');
 
+
+// --- MISSION CONTROL: shell, home, milestones ---
+import { SEED_MILESTONES } from '../seed.mjs';
+{
+  const mm = html.match(/BASELINE-MS:BEGIN[\s\S]*?const BASELINE_MILESTONES = (\[[\s\S]*?\]);\n\/\* BASELINE-MS:END/);
+  ok(mm && JSON.stringify(JSON.parse(mm[1]))===JSON.stringify(SEED_MILESTONES), 'milestone baseline matches seed');
+
+  ok(d(nik).getElementById('view-home').classList.contains('active'), 'Home is the default view (fresh window)');
+  ok(d(jim).querySelectorAll('#homeAmbitions .soap-card').length===3, 'home: 3 ambition cards');
+  ok(d(jim).querySelectorAll('#homeShifts .soap-card').length===3, 'home: 3 shift cards');
+  ok(d(jim).querySelectorAll('#homeEnablers .enabler-tile').length===8, 'home: 8 enabler tiles');
+  ok((await state(JIM)).milestones.length===20, 'state carries 20 seeded milestones');
+
+  jim.showModule('risk');
+  ok(d(jim).getElementById('subNav').style.display==='', 'risk module reveals subnav');
+  jim.showModule('milestones');
+  ok(d(jim).querySelectorAll('#msBody .ms-row').length===20, 'milestones list renders 20');
+
+  // owner live update (no QA gate): Nikesh updates his M01
+  nik.showModule('milestones');
+  nik.openMilestone('M01');
+  ok(d(nik).getElementById('msmSave').style.display==='', 'Nikesh can edit his milestone');
+  d(nik).getElementById('msmRag').value='At risk';
+  d(nik).getElementById('msmProg').value='25';
+  d(nik).getElementById('msmNote').value='Applications open; panel recruitment behind schedule';
+  await nik.saveMilestone(); await sleep(250);
+  const m01 = (await state(JIM)).milestones.find(x=>x.id==='M01');
+  ok(m01.rag==='At risk' && m01.progress===25, 'owner milestone update is live immediately');
+  ok(m01.history.some(h=>h.note && h.note.includes('panel recruitment')), 'update note logged');
+
+  // Nikesh cannot edit Jim's milestone (UI + server)
+  nik.openMilestone('M15');
+  ok(d(nik).getElementById('msmSave').style.display==='none', 'Nikesh read-only on M15');
+  nik.closeMilestone();
+  const forbMs = await worker.fetch(new Request('https://tcf.example/api/milestone',
+    {method:'POST', headers:{'Cf-Access-Authenticated-User-Email':NIK,'content-type':'application/json'},
+     body:JSON.stringify({milestone:{id:'M15', title:'x', rag:'On track'}})}), env);
+  ok(forbMs.status===403, 'server blocks non-owner milestone edit ('+forbMs.status+')');
+  const delMs = await worker.fetch(new Request('https://tcf.example/api/milestone/M01',
+    {method:'DELETE', headers:{'Cf-Access-Authenticated-User-Email':NIK}}), env);
+  ok(delMs.status===403, 'milestone delete is admin-only');
+
+  // admin edits any milestone
+  await jim.refreshState({force:true});
+  jim.openMilestone('M05');
+  ok(d(jim).getElementById('msmSave').style.display==='', 'admin can edit any milestone');
+  jim.closeMilestone();
+
+  // pack includes milestones section
+  jim.showModule('pack'); jim.renderPack();
+  d(jim).getElementById('pCom').value='Board'; jim.renderPack(true);
+  const packTxt = d(jim).getElementById('packBody').textContent;
+  ok(packTxt.includes('Milestones') && packTxt.includes('M15'), 'Board pack includes milestones');
+
+  // home rollup reflects the At-risk change
+  jim.showModule('home');
+  ok(d(jim).getElementById('homeKpis').textContent.includes('at risk'), 'home KPI shows at-risk count');
+
+  // offline copy shows milestones read-only
+  ok(d(off).querySelectorAll('#msBody .ms-row').length===20, 'offline shows 20 milestones');
+  off.openMilestone('M01');
+  ok(d(off).getElementById('msmSave').style.display==='none', 'offline milestone read-only');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

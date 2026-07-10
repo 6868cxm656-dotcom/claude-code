@@ -1,6 +1,7 @@
 # Plan: TCF Mission Control — from risk register to organisational suite
 
-**Status:** proposed for approval · **Date:** 19 June 2026 (rev. 20 June: strategy layer added)
+**Status:** Phases 1–2 SHIPPED (10 July 2026): shell, live SOAP home, Milestones module with draft year-1 plan. Next: strategy measures (ph.3), budget feed decision (ph.4).
+**Date:** 19 June 2026 (rev. 20 June: strategy layer; 10 July: phases 1–2 delivered)
 **Author:** drafted by Claude (AI) for COO/SLT review
 **Builds on:** the live risk register (`db-app/`, Cloudflare Worker + D1 behind staff Access)
 **Framed by:** the Strategy on a Page 2026/27–2028/29 (draft v7), live from 1 Oct 2026

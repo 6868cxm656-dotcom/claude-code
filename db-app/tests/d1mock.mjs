@@ -1,8 +1,14 @@
 // Minimal in-memory D1 mock sufficient for the worker's queries.
 export function makeDB(){
-  const risks = new Map(), deleted = new Map(), settings = new Map();
+  const risks = new Map(), deleted = new Map(), settings = new Map(), milestones = new Map();
   function run(sql, args){
     sql = sql.replace(/\s+/g,' ').trim();
+    if(/INTO milestones/i.test(sql)){
+      const [id,owner,soap,updated,data] = args;
+      milestones.set(id, {id,owner,soap,updated,data});
+      return {};
+    }
+    if(/^DELETE FROM milestones WHERE id=\?/i.test(sql)){ milestones.delete(args[0]); return {}; }
     if(/^INSERT (OR IGNORE )?INTO risks/i.test(sql)){
       const [id,committee,l2,updated,data] = args; // matches both seed (5 args) & upsert(6 args w/ pending_new)
       // upsert form: id,committee,l2,updated,pending_new,data
@@ -18,6 +24,8 @@ export function makeDB(){
   function first(sql,args){
     sql=sql.replace(/\s+/g,' ').trim();
     if(/SELECT COUNT\(\*\) AS n FROM risks/i.test(sql)) return {n:risks.size};
+    if(/SELECT COUNT\(\*\) AS n FROM milestones/i.test(sql)) return {n:milestones.size};
+    if(/SELECT data FROM milestones WHERE id=\?/i.test(sql)){ const r=milestones.get(args[0]); return r?{data:r.data}:null; }
     if(/SELECT data FROM risks WHERE id=\?/i.test(sql)){ const r=risks.get(args[0]); return r?{data:r.data}:null; }
     if(/SELECT v FROM settings WHERE k='global'/i.test(sql)){ const v=settings.get('global'); return v?{v}:null; }
     return null;
@@ -25,6 +33,8 @@ export function makeDB(){
   function all(sql){
     sql=sql.replace(/\s+/g,' ').trim();
     if(/SELECT data FROM risks$/i.test(sql)) return {results:[...risks.values()].map(r=>({data:r.data}))};
+    if(/SELECT data FROM milestones$/i.test(sql)) return {results:[...milestones.values()].map(r=>({data:r.data}))};
+    if(/SELECT id FROM milestones$/i.test(sql)) return {results:[...milestones.keys()].map(id=>({id}))};
     if(/SELECT data FROM deleted$/i.test(sql)) return {results:[...deleted.values()].map(r=>({data:r.data}))};
     if(/SELECT id FROM risks UNION SELECT id FROM deleted/i.test(sql)) return {results:[...risks.keys(),...deleted.keys()].map(id=>({id}))};
     return {results:[]};

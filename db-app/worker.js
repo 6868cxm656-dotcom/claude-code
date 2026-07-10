@@ -3,9 +3,10 @@
 // derives the role server-side, and enforces the proposal/approval rules.
 import {
   roleFor, isAdmin, canEditArea, COMMITTEES, EMAIL_TO_PERSON,
-  decideSave, decideDelete, applyApprove, applyReject, applyFlag, applyClearFlag
+  decideSave, decideDelete, applyApprove, applyReject, applyFlag, applyClearFlag,
+  decideMilestoneSave
 } from "./logic.mjs";
-import { SEED_RISKS, SEED_SETTINGS } from "./seed.mjs";
+import { SEED_RISKS, SEED_SETTINGS, SEED_MILESTONES } from "./seed.mjs";
 
 const json = (obj, status=200) =>
   new Response(JSON.stringify(obj), {status, headers:{"content-type":"application/json", "cache-control":"no-store"}});
@@ -39,6 +40,33 @@ async function ensureExtras(env){
       .bind(extra.id, extra.com, extra.l2, extra.updated||"", JSON.stringify(extra)).run();
   }
   await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('extras_v1','1')").run();
+}
+
+// Milestones module storage: created and seeded independently of the risks table
+// (which is already populated on the production database).
+async function ensureMilestones(env){
+  await env.DB.exec("CREATE TABLE IF NOT EXISTS milestones (id TEXT PRIMARY KEY, owner TEXT, soap TEXT, updated TEXT, data TEXT NOT NULL)");
+  const cnt = await env.DB.prepare("SELECT COUNT(*) AS n FROM milestones").first();
+  if(cnt && cnt.n > 0) return;
+  const stmts = SEED_MILESTONES.map(m => env.DB.prepare(
+    "INSERT OR IGNORE INTO milestones (id,owner,soap,updated,data) VALUES (?,?,?,?,?)"
+  ).bind(m.id, m.owner, m.soap, m.updated||"", JSON.stringify(m)));
+  if(stmts.length) await env.DB.batch(stmts);
+}
+async function loadMilestone(env, id){
+  const row = await env.DB.prepare("SELECT data FROM milestones WHERE id=?").bind(id).first();
+  return row ? JSON.parse(row.data) : null;
+}
+async function upsertMilestone(env, m){
+  await env.DB.prepare(
+    `INSERT INTO milestones (id,owner,soap,updated,data) VALUES (?,?,?,?,?)
+     ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,soap=excluded.soap,updated=excluded.updated,data=excluded.data`
+  ).bind(m.id, m.owner, m.soap, m.updated||"", JSON.stringify(m)).run();
+}
+async function nextMilestoneId(env){
+  const rows = await env.DB.prepare("SELECT id FROM milestones").all();
+  let n = 0; (rows.results||[]).forEach(x=>{ const mm=/^M(\d+)$/.exec(x.id); if(mm) n=Math.max(n,+mm[1]); });
+  return "M" + String(n+1).padStart(2,"0");
 }
 
 // Cloudflare Access guarantees this header on every request to a protected hostname,
@@ -79,6 +107,7 @@ async function nextId(env){
 async function handleApi(req, env){
   await ensureInit(env);
   await ensureExtras(env);
+  await ensureMilestones(env);
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/,"");
   const email = emailFromRequest(req);
@@ -92,12 +121,14 @@ async function handleApi(req, env){
     const rs = await env.DB.prepare("SELECT data FROM risks").all();
     const ds = await env.DB.prepare("SELECT data FROM deleted").all();
     const st = await env.DB.prepare("SELECT v FROM settings WHERE k='global'").first();
+    const ms = await env.DB.prepare("SELECT data FROM milestones").all();
     let riskRows = (rs.results||[]).map(x=>JSON.parse(x.data));
     let delRows  = (ds.results||[]).map(x=>JSON.parse(x.data));
     if(!isAdmin(role)){ riskRows = riskRows.filter(r=>!r.hidden); delRows = delRows.filter(r=>!r.hidden); }
     return json({
       risks: riskRows,
       deleted: delRows,
+      milestones: (ms.results||[]).map(x=>JSON.parse(x.data)),
       settings: st ? JSON.parse(st.v) : {},
       me: {email, role, admin: isAdmin(role)}
     });
@@ -173,6 +204,26 @@ async function handleApi(req, env){
     if(r.error) return json({error:r.error}, r.code);
     if(r.remove){ await removeRisk(env, prev.id); return json({ok:true, removed:true}); }
     await upsertRisk(env, r.risk); return json({ok:true, risk:r.risk});
+  }
+
+  // milestones: owner updates live (no QA gate); admins edit anything; delete admin-only
+  if(path==="/api/milestone" && req.method==="POST"){
+    const proposed = body.milestone || {};
+    const prev = proposed.id ? await loadMilestone(env, proposed.id) : null;
+    if(proposed.id && !prev) return json({error:"Not found"}, 404);
+    if(prev && body.baseUpdated && body.baseUpdated !== prev.updated)
+      return json({error:"This milestone changed since you opened it — please reload.", code:409}, 409);
+    const res = decideMilestoneSave(role, prev, proposed, body.note, now);
+    if(res.error) return json({error:res.error}, res.noop?200:res.code);
+    if(!prev) res.milestone.id = await nextMilestoneId(env);
+    await upsertMilestone(env, res.milestone);
+    return json({ok:true, milestone:res.milestone});
+  }
+  if((m = path.match(/^\/api\/milestone\/([^/]+)$/)) && req.method==="DELETE"){
+    if(!isAdmin(role)) return json({error:"Admins only"}, 403);
+    const prev = await loadMilestone(env, m[1]); if(!prev) return json({error:"Not found"}, 404);
+    await env.DB.prepare("DELETE FROM milestones WHERE id=?").bind(m[1]).run();
+    return json({ok:true, deleted:true});
   }
 
   if(path==="/api/settings" && req.method==="PUT"){

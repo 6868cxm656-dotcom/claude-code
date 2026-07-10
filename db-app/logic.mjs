@@ -114,3 +114,39 @@ export function applyClearFlag(role, prev, now){
   return {risk:{...prev, flag:null,
     history:(prev.history||[]).concat([{at:now, by:role, changes:[{f:"flag", from:prev.flag, to:null}]}])}};
 }
+
+/* ============ MILESTONES ============ */
+export const MILESTONE_FIELDS = ["title","desc","owner","soap","year","due","rag","progress","com","draft"];
+export const RAGS = ["On track","At risk","Off track","Done"];
+export function canEditMilestone(role, m){
+  if(role==="viewer") return false;
+  return isAdmin(role) || m.owner===role;
+}
+export function diffMilestone(prev, next){
+  const changes = [];
+  MILESTONE_FIELDS.forEach(f=>{ if(!sameVal(prev[f], next[f])) changes.push({f, from:prev[f], to:next[f]}); });
+  return changes;
+}
+// Milestone updates are live for their owner (no QA gate — decision 8.3 in the plan).
+export function decideMilestoneSave(role, prev, proposed, note, now){
+  if(!proposed || !String(proposed.title||"").trim()) return {error:"Title required", code:400};
+  if(!RAGS.includes(proposed.rag||"On track")) return {error:"Invalid status", code:400};
+  if(prev){
+    if(!canEditMilestone(role, prev)) return {error:"You can only update your own milestones", code:403};
+    if(!isAdmin(role) && proposed.owner && proposed.owner!==prev.owner)
+      return {error:"Only Jim/Julia can reassign a milestone", code:403};
+    const fields = {}; MILESTONE_FIELDS.forEach(f=>{ if(proposed[f]!==undefined) fields[f]=proposed[f]; });
+    const merged = {...prev, ...fields};
+    const changes = diffMilestone(prev, merged);
+    if(!changes.length && !note) return {error:"No changes", code:200, noop:true};
+    const entry = {at:now, by:role};
+    if(changes.length) entry.changes = changes;
+    if(note) entry.note = note;
+    return {milestone:{...merged, updated:now, history:(prev.history||[]).concat([entry])}};
+  }
+  if(role==="viewer") return {error:"Read-only access", code:403};
+  const owner = isAdmin(role) ? (proposed.owner||role) : role;   // owners create for themselves
+  const base = {...proposed, owner, created:now, updated:now,
+    history:[{at:now, by:role, created:true}].concat(note?[{at:now, by:role, note}]:[])};
+  return {milestone:base};
+}

@@ -1,4 +1,8 @@
-# TCF Risk Register — shared-database app
+# TCF Mission Control — shared-database app
+
+Now a module suite: **Home** (the Strategy on a Page, live), **Risk** (the
+register), **Milestones** (year-1 plan, SOAP-tagged, owner updates live with
+no QA gate), plus committee packs and approvals. One Worker, one D1, one login.
 
 This folder is the database-backed version of the register, built per
 `risk-taxonomy/SHARED_DB_PLAN.md`. It is **live**: the Cloudflare Worker

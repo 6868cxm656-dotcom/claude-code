@@ -1,4 +1,6 @@
 {
+  // Used by the Cloudflare Git build (root directory "/"). Keep in sync with
+  // db-app/wrangler.jsonc (used for local `wrangler dev` from db-app/). MIRROR.
   "name": "tcf-risk-register",
   "main": "db-app/worker.js",
   "compatibility_date": "2026-06-15",

@@ -1,4 +1,6 @@
 {
+  // Local-dev config (run `wrangler dev` from db-app/). The deployed build uses
+  // the repo-root wrangler.jsonc — keep the two in sync. MIRROR.
   "name": "tcf-risk-register",
   "main": "worker.js",
   "compatibility_date": "2026-06-15",

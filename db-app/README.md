@@ -1,5 +1,8 @@
 # TCF Mission Control — shared-database app
 
+> **New here? Read `HANDOVER.md` first** — the map, the invariants, the gotchas
+> and the runbook, written for whoever builds on this next.
+
 Now a module suite: **Home** (the Strategy on a Page, live), **Risk** (the
 register), **Milestones** (year-1 plan, SOAP-tagged, owner updates live with
 no QA gate), plus committee packs and approvals. One Worker, one D1, one login.
@@ -16,7 +19,6 @@ Cloudflare D1 database, behind staff-only Cloudflare Access.
 - `logic.mjs` — pure business logic (roles, permissions, proposal/approval state
   machine). Unit-tested in node.
 - `seed.mjs` — embedded 40-risk baseline + settings used to seed an empty DB.
-- `migrations/` — SQL schema + seed (kept for reference; the worker self-seeds).
 - `public/index.html` — the front-end (mirrors `risk-taxonomy/tcf-risk-register.html`).
   Served over http(s) it is API-only; opened as a file it is a read-only offline
   viewer (baseline snapshot + "View a backup" JSON loader). Its BASELINE literal
@@ -57,4 +59,4 @@ Cloudflare D1 database, behind staff-only Cloudflare Access.
 with an in-memory D1 mock — 27 checks covering identity, proposal/approval
 (edit, create, reject), hidden-risk enforcement and leak checks, API failure
 handling, baseline/seed drift, and the offline read-only viewer.
-Run: `JSDOM_PATH=<path-to-jsdom> node db-app/tests/e2e.mjs` (or `npm i jsdom` and run plain).
+Run: `cd db-app/tests && npm install && npm test` (or set JSDOM_PATH to an existing jsdom).

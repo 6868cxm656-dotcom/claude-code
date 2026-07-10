@@ -294,6 +294,7 @@
 </noscript>
 <div id="jsError" style="display:none;background:#fdecea;color:#A81B12;padding:14px 28px;font-weight:600"></div>
 <div id="apiBanner" style="display:none;background:#fff8e1;color:#7a5d00;padding:10px 28px;font-weight:600;border-bottom:1px solid #f0d98a"></div>
+<div id="vaBanner" style="display:none;background:#ede7f6;color:#4527a0;padding:10px 28px;font-weight:600;border-bottom:1px solid #d1c4e9"></div>
 <script>
 window.onerror = function(msg, src, line){
   var d = document.getElementById("jsError");
@@ -313,6 +314,7 @@ window.onerror = function(msg, src, line){
     </div>
     <div class="head-controls">
       <span id="whoami" style="font-size:12.5px;font-weight:700"></span>
+      <select id="viewAsSel" style="display:none" onchange="setViewAs(this.value)"></select>
       <button class="btn-ghost" id="settingsBtn" style="display:none" onclick="openSettings()">⚙ Meetings &amp; contacts</button>
       <button class="btn-ghost" onclick="exportJSON(false)">Export all (JSON)</button>
       <button class="btn-ghost" id="exportMineBtn" onclick="exportJSON(true)" style="display:none">Export my areas</button>
@@ -327,6 +329,7 @@ window.onerror = function(msg, src, line){
     <button id="mod-milestones" onclick="showModule('milestones')">Milestones</button>
     <button id="mod-pack" onclick="showModule('pack')">Committee pack</button>
     <button id="mod-approvals" onclick="showModule('approvals')">Approvals <span id="apprBadge" class="navbadge" style="display:none">0</span></button>
+    <button id="mod-access" style="display:none" onclick="showModule('access')">Access</button>
   </nav>
 </header>
 <nav id="subNav" class="subnav" style="display:none">
@@ -552,6 +555,28 @@ window.onerror = function(msg, src, line){
     <div id="packBody"></div>
   </section>
 
+  <!-- ACCESS (admins only) -->
+  <section id="view-access" class="view">
+    <div class="card">
+      <h3>Users &amp; groups <span class="tag tag-ai" style="background:#ede7f6;color:#4527a0">admins only</span></h3>
+      <p class="rubric-note">Who can do what once they are signed in. <b>Note:</b> reaching the app at all is controlled separately by the Cloudflare Access policy (currently anyone with a @churchillfellowship.org email) — adding someone here does not open the door, and removing them here does not close it. Guard rails: there must always be at least one admin, and you cannot remove your own admin access.</p>
+      <div class="table-scroll"><table id="accUsersTbl"><thead><tr><th>Email</th><th>Name</th><th>Group</th><th></th></tr></thead><tbody id="accUsers"></tbody></table></div>
+      <button class="btn-soft" style="margin-top:8px" onclick="accAddUser()">＋ Add user</button>
+    </div>
+    <div class="card">
+      <h3>Risk area ownership <span class="hint">who owns each Level-1 category (drives edit rights and proposals)</span></h3>
+      <div id="accCats" class="enabler-strip"></div>
+    </div>
+    <div class="card">
+      <h3>What each group can do</h3>
+      <div class="table-scroll"><div id="accMatrix"></div></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:30px">
+      <button class="btn-primary" onclick="saveAccess()">Save access settings</button>
+      <span class="count-note" id="accNote"></span>
+    </div>
+  </section>
+
   <!-- APPROVALS -->
   <section id="view-approvals" class="view">
     <div class="card">
@@ -768,7 +793,7 @@ const BASELINE_MILESTONES = [{"id":"M01","soap":"A1","owner":"Nikesh","com":"Boa
 /* BASELINE-MS:END */
 
 /* ============ STATE ============ */
-const APP_VERSION = "v2026-07-10";
+const APP_VERSION = "v2026-07-10b";
 const TODAY = new Date().toISOString().slice(0,10);
 const PEOPLE = ["Julia","Jim","Nikesh","Jacqui","Chris"];
 const ADMINS = ["Jim","Julia"];                       // access-all-areas
@@ -787,6 +812,11 @@ const DEFAULT_SETTINGS = {
 let risks = [], deletedRisks = [], milestones = [];
 let settings = mergeSettings(null);
 let role = "viewer";                 // set from the signed-in identity in shared mode
+let meAdmin = false;                 // admin per the server (configurable)
+let people = null;                   // staff directory from the access config
+let catOwn = null;                   // effective category ownership
+let accessCfg = null;                // raw access config (admins only)
+let viewAs = null;                   // admin preview of another user's view
 let saveInFlight = false;
 let sortKey = "score", sortDir = -1;
 let editingId = null, pickL = 3, pickI = 3;
@@ -860,13 +890,30 @@ async function apiCall(method, path, body){
 }
 function applyMe(me){
   role = me.role || "viewer";
-  const sel = document.getElementById("role"); if(sel) sel.style.display = "none";
-  const lab = document.getElementById("roleLabel"); if(lab) lab.style.display = "none";
+  meAdmin = !!me.admin;
   const who = document.getElementById("whoami");
   if(who){ who.style.display = "";
-    who.textContent = me.role && me.role!=="viewer"
-      ? `Signed in as ${me.role}${me.admin?" · all areas":" · edits own areas"}`
-      : `Signed in as ${me.email||"guest"} · view only`; }
+    who.textContent = me.viewAs
+      ? `Viewing as ${me.viewAs==="viewer"?"staff viewer":me.viewAs} (you are ${me.realRole})`
+      : (me.role && me.role!=="viewer"
+        ? `Signed in as ${me.role}${me.admin?" · all areas":" · edits own areas"}`
+        : `Signed in as ${me.email||"guest"} · view only`); }
+  const vs = document.getElementById("viewAsSel");
+  if(vs){
+    if(me.realAdmin && !me.viewAs){
+      vs.style.display = "";
+      const names = (people||[]).filter(p=>p.group!=="viewer").map(p=>p.name).filter(n=>n!==me.realRole);
+      vs.innerHTML = '<option value="">👁 View as…</option>' + names.map(n=>`<option>${esc(n)}</option>`).join("") + '<option value="viewer">Staff viewer</option>';
+    } else vs.style.display = "none";
+  }
+  const vb = document.getElementById("vaBanner");
+  if(vb){
+    if(me.viewAs){
+      vb.style.display = "";
+      vb.innerHTML = `👁 Viewing as <b>${esc(me.viewAs==="viewer"?"staff viewer":me.viewAs)}</b> — read-only preview of what they can see. <button class="btn-soft" style="margin-left:10px;padding:3px 12px" onclick="setViewAs('')">Exit view-as</button>`;
+    } else vb.style.display = "none";
+  }
+  const ma = document.getElementById("mod-access"); if(ma) ma.style.display = (me.realAdmin && !me.viewAs) ? "" : "none";
   document.getElementById("exportMineBtn").style.display = (role!=="viewer" && !isAdmin()) ? "" : "none";
   document.getElementById("addBtn").style.display = (role==="viewer") ? "none" : "";
   const mab = document.getElementById("msAddBtn"); if(mab) mab.style.display = (role==="viewer") ? "none" : "";
@@ -883,9 +930,11 @@ async function refreshState(opts){
   // don't clobber an open editor/settings panel unless forced (e.g. straight after a save)
   if(!opts.force && (document.getElementById("overlay").classList.contains("open")
       || document.getElementById("settingsOverlay").classList.contains("open"))) return false;
-  const {ok, data} = await apiCall("GET","/api/state");
+  const {ok, data} = await apiCall("GET","/api/state" + (viewAs ? "?viewAs="+encodeURIComponent(viewAs) : ""));
   if(!ok || !Array.isArray(data.risks)) return false;
   risks = data.risks; deletedRisks = data.deleted || []; milestones = data.milestones || []; settings = mergeSettings(data.settings);
+  people = data.people || people; catOwn = data.catOwner || catOwn;
+  if(data.access !== undefined) accessCfg = data.access;
   if(data.me) applyMe(data.me);
   renderAll();
   return true;
@@ -911,16 +960,26 @@ function appetite(r){ return APPETITES[area(r).app]; }
 function outsideAppetite(r){ return r.status!=="Closed" && score(r) > appetite(r).max; }
 function overdue(r){ return r.status!=="Closed" && r.review && r.review < TODAY; }
 function ownerFirst(owner){ return owner.split(" ")[0]; }
-function isAdmin(){ return ADMINS.includes(role); }
+function isAdmin(){ return apiMode ? meAdmin : ADMINS.includes(role); }
+function ownerLabel(cat){ return (catOwn && catOwn[cat.ref]) || ownerFirst(cat.owner); }
+function editorNames(){ return people ? people.filter(p=>p.group!=="viewer").map(p=>p.name) : PEOPLE.slice(); }
+function emailFor(name){ const p=(people||[]).find(x=>x.name===name); return (settings.emails[name]||"").trim() || (p&&p.email) || ""; }
+function adminEmails(){ const as = people ? people.filter(p=>p.group==="admin").map(p=>p.name) : ADMINS.slice(); return as.map(emailFor).filter(Boolean); }
+function viewAsGuard(){ if(viewAs){ toast("View-as is a read-only preview — exit it (top banner) to make changes."); return true; } return false; }
+function setViewAs(v){
+  viewAs = v || null;
+  if(document.getElementById("view-access").classList.contains("active")) showModule("home");
+  refreshState({force:true});
+}
 function canEdit(r){
   if(role==="viewer") return false;
   if(isAdmin()) return true;
-  return ownerFirst(area(r).cat.owner) === role;
+  return ownerLabel(area(r).cat) === role;
 }
 function canEditArea(l2ref){
   if(role==="viewer") return false;
   if(isAdmin()) return true;
-  return ownerFirst(AREA_MAP[l2ref].cat.owner) === role;
+  return ownerLabel(AREA_MAP[l2ref].cat) === role;
 }
 
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
@@ -1036,7 +1095,7 @@ function updateApprBadge(){
 }
 
 /* ============ VIEWS / MODULES ============ */
-const MODULE_VIEWS = {home:["home"], risk:["overview","dashboard","register","taxonomy","changes"], milestones:["milestones"], pack:["pack"], approvals:["approvals"]};
+const MODULE_VIEWS = {home:["home"], risk:["overview","dashboard","register","taxonomy","changes"], milestones:["milestones"], pack:["pack"], approvals:["approvals"], access:["access"]};
 function moduleOf(v){ return Object.keys(MODULE_VIEWS).find(m=>MODULE_VIEWS[m].includes(v)) || "home"; }
 function showView(v){
   const mod = moduleOf(v);
@@ -1053,6 +1112,7 @@ function showModule(m){
   if(m==="milestones") renderMilestones();
   if(m==="pack") renderPack();
   if(m==="approvals") renderApprovals();
+  if(m==="access") renderAccess();
 }
 
 /* ---- dashboard ---- */
@@ -1168,7 +1228,7 @@ function renderRegister(){
   let list = liveList().filter(r=>{
     const a = area(r);
     if(fc && a.cat.ref!==fc) return false;
-    if(fo && a.cat.owner!==fo) return false;
+    if(fo && ownerLabel(a.cat)!==fo) return false;
     if(fa && a.app!==fa) return false;
     if(fcom && r.com!==fcom) return false;
     if(fs && r.status!==fs) return false;
@@ -1179,7 +1239,7 @@ function renderRegister(){
     if(cellFilter && (r.l!==cellFilter[0] || r.i!==cellFilter[1])) return false;
     if(minScoreFilter && score(r)<minScoreFilter) return false;
     if(q){
-      const hay = [r.id,r.title,r.desc,(r.controls||[]).join(" "),(r.actions||[]).join(" "),a.name,a.cat.name,a.cat.owner,r.com||""].join(" ").toLowerCase();
+      const hay = [r.id,r.title,r.desc,(r.controls||[]).join(" "),(r.actions||[]).join(" "),a.name,a.cat.name,ownerLabel(a.cat),r.com||""].join(" ").toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
@@ -1199,7 +1259,7 @@ function renderRegister(){
       <td style="font-weight:700;color:var(--muted)">${r.id}</td>
       <td><div class="risk-title">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.hidden?'<span class="tag tag-hidden" title="Hidden from wider sharing — only you and Julia can see this">🙈 hidden</span>':""}${r.flag?`<span class="tag tag-flag" title="Review requested by ${esc(r.flag.by)}${r.flag.note? ": "+esc(r.flag.note):""}">🚩 review</span>`:""}${r.pending?`<span class="tag tag-prop" title="Proposed ${esc(r.pending.kind)} by ${esc(r.pending.by)} awaiting QA">⏳ ${r.pending.kind==="delete"?"deletion ":""}proposal</span>`:""}${lock}</div><div class="risk-sub">${esc(r.desc).slice(0,110)}${r.desc.length>110?"…":""}</div></td>
       <td><div style="font-weight:700;font-size:12.5px">${esc(a.cat.name)}</div><div class="risk-sub">${a.ref} ${esc(a.name)}</div></td>
-      <td style="white-space:nowrap">${esc(a.cat.owner)}</td>
+      <td style="white-space:nowrap">${esc(ownerLabel(a.cat))}</td>
       <td style="white-space:nowrap"><span class="tag tag-app" title="${esc(COMMITTEES[r.com]||"")}">${esc(r.com||"–")}</span></td>
       <td class="num-col" title="${RUBRIC.likelihood[r.l-1][1]}">${r.l}</td>
       <td class="num-col" title="${RUBRIC.impact[r.i-1][1]}">${r.i}</td>
@@ -1224,7 +1284,7 @@ function renderTaxonomy(){
         <span class="anm">${a.ref} ${esc(a.name)}</span>
         <span class="cnt">${n} risk${n===1?"":"s"}${br?` · <span class="breach-flag">${br}▲</span>`:""}${n===0?' · <span class="breach-flag">blind spot?</span>':""}</span></div>`;
     }).join("");
-    return `<div class="tax-cat"><div class="cat-h"><div class="nm">${c.ref}. ${esc(c.name)}</div><div class="ow">Owner: ${esc(c.owner)}</div></div>${rows}</div>`;
+    return `<div class="tax-cat"><div class="cat-h"><div class="nm">${c.ref}. ${esc(c.name)}</div><div class="ow">Owner: ${esc(ownerLabel(c))}</div></div>${rows}</div>`;
   }).join("");
 }
 function goRegisterArea(l2){
@@ -1324,7 +1384,7 @@ function renderChanges(){
 
 /* ============ MODAL ============ */
 function buildAreaOptions(sel, current){
-  sel.innerHTML = TAXONOMY.map(c=>`<optgroup label="${c.ref}. ${esc(c.name)} — ${esc(c.owner)}">`+
+  sel.innerHTML = TAXONOMY.map(c=>`<optgroup label="${c.ref}. ${esc(c.name)} — ${esc(ownerLabel(c))}">`+
     c.areas.map(a=>`<option value="${a.ref}" ${a.ref===current?"selected":""} ${(!canEditArea(a.ref)&&role!=="viewer")?"disabled":""}>${a.ref} ${esc(a.name)}</option>`).join("")+`</optgroup>`).join("");
 }
 function openModal(id){
@@ -1340,7 +1400,7 @@ function openModal(id){
   document.getElementById("mRiskTitle").value = src? src.title : "";
   document.getElementById("mDesc").value = src? src.desc : "";
   const defaultArea = (role!=="viewer")
-      ? (TAXONOMY.find(c=>ownerFirst(c.owner)===role)||TAXONOMY[0]).areas[0].ref
+      ? (TAXONOMY.find(c=>ownerLabel(c)===role)||TAXONOMY[0]).areas[0].ref
       : "1.1";
   buildAreaOptions(document.getElementById("mArea"), src? src.l2 : defaultArea);
   document.getElementById("mCom").innerHTML = Object.keys(COMMITTEES).map(c=>
@@ -1430,6 +1490,7 @@ function closeModal(){ document.getElementById("overlay").classList.remove("open
 
 /* ---- review flags ---- */
 async function flagRisk(){
+  if(viewAsGuard()) return;
   const r = risks.find(x=>x.id===editingId);
   if(!r || role==="viewer" || !apiMode) return;
   const note = await askText("Request a review", {body:"Why does this risk need review? Your note goes to the owner.", okLabel:"Flag & email owner"});
@@ -1440,8 +1501,8 @@ async function flagRisk(){
 }
 function emailOwnerFlag(r, note){
   // open a pre-addressed email to the owner
-  const ownerName = ownerFirst(area(r).cat.owner);
-  const to = (settings.emails[ownerName]||"").trim();
+  const ownerName = ownerLabel(area(r).cat);
+  const to = emailFor(ownerName);
   const subject = encodeURIComponent(`[TCF Risk Register] Review requested: ${r.id} — ${r.title}`);
   const body = encodeURIComponent(
     `Hi ${ownerName},\n\n${role} has flagged a risk for your review.\n\n`+
@@ -1452,6 +1513,7 @@ function emailOwnerFlag(r, note){
   toast(to ? `Flagged — email to ${ownerName} opened.` : `Flagged. No email saved for ${ownerName} — add it under ⚙ Meetings & contacts.`);
 }
 async function clearFlag(){
+  if(viewAsGuard()) return;
   const r = risks.find(x=>x.id===editingId);
   if(!r || !r.flag || !apiMode) return;
   if(!canEdit(r) && r.flag.by!==role){ toast("Only the owner, an admin, or the flagger can clear a flag."); return; }
@@ -1460,6 +1522,7 @@ async function clearFlag(){
   closeModal(); await refreshState({force:true}); toast("Flag cleared.");
 }
 async function toggleHidden(){
+  if(viewAsGuard()) return;
   const r = risks.find(x=>x.id===editingId);
   if(!r || !isAdmin() || !apiMode) return;
   const makeHidden = !r.hidden;
@@ -1481,6 +1544,7 @@ function nextId(){
   return "R" + String(n+1).padStart(2,"0");
 }
 async function saveRisk(){
+  if(viewAsGuard()) return;
   const title = document.getElementById("mRiskTitle").value.trim();
   if(!title){ toast("Give the risk a title."); return; }
   const prevRisk = editingId ? risks.find(r=>r.id===editingId) : null;
@@ -1532,6 +1596,7 @@ async function saveRisk(){
   toast("This copy is read-only — open the shared register link to make changes.");
 }
 async function deleteRisk(){
+  if(viewAsGuard()) return;
   const r = risks.find(x=>x.id===editingId);
   if(!r || !apiMode) return;
   const admin = isAdmin();
@@ -1552,7 +1617,7 @@ async function deleteRisk(){
   else { notifyAdmins(data.risk, "delete", note); toast("Deletion proposed — sent to Jim/Julia for QA."); }
 }
 function notifyAdmins(r, kind, note){
-  const to = ADMINS.map(a=>(settings.emails[a]||"").trim()).filter(Boolean).join(",");
+  const to = adminEmails().join(",");
   const verb = kind==="new" ? "New risk proposed" : kind==="delete" ? "Risk deletion proposed" : "Change proposed";
   const subject = encodeURIComponent(`[TCF Risk Register] ${verb} for QA: ${r.id} — ${r.title}`);
   const body = encodeURIComponent(
@@ -1610,6 +1675,7 @@ function renderApprovals(){
   }).join("");
 }
 async function approveProposal(id){
+  if(viewAsGuard()) return;
   if(!isAdmin() || !apiMode) return;
   const r = risks.find(x=>x.id===id); if(!r||!r.pending) return;
   const {ok, data} = await apiCall("POST", "/api/proposal/"+id+"/approve", {});
@@ -1617,6 +1683,7 @@ async function approveProposal(id){
   await refreshState({force:true}); toast(`${id} approved — now live.`);
 }
 async function rejectProposal(id){
+  if(viewAsGuard()) return;
   if(!isAdmin() || !apiMode) return;
   const r = risks.find(x=>x.id===id); if(!r||!r.pending) return;
   const reason = await askText("Reject this proposal", {body:`The reason is recorded in the risk history and shown to ${r.pending.by}.`, okLabel:"Reject proposal"});
@@ -1636,18 +1703,19 @@ function openSettings(){
       <div><textarea id="setM-${c}" rows="3" style="font:inherit;width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px" placeholder="One date per line (YYYY-MM-DD)">${esc((settings.schedules[c]||[]).join("\n"))}</textarea>
       <div class="risk-sub" style="margin-top:2px">${note}</div></div></div>`;
   }).join("");
-  document.getElementById("setEmails").innerHTML = PEOPLE.map(p=>
+  document.getElementById("setEmails").innerHTML = editorNames().map(p=>
     `<div class="set-row"><label>${p}</label><input type="email" id="setE-${p}" placeholder="name@churchillfellowship.org" value="${esc(settings.emails[p]||"")}"></div>`).join("");
   document.getElementById("settingsOverlay").classList.add("open");
 }
 function closeSettings(){ document.getElementById("settingsOverlay").classList.remove("open"); }
 async function saveSettings(){
+  if(viewAsGuard()) return;
   if(!apiMode) return;
   Object.keys(COMMITTEES).forEach(c=>{
     settings.schedules[c] = (document.getElementById("setM-"+c).value || "")
       .split("\n").map(s=>s.trim()).filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s)).sort();
   });
-  PEOPLE.forEach(p=>{ settings.emails[p] = document.getElementById("setE-"+p).value.trim(); });
+  editorNames().forEach(p=>{ const el=document.getElementById("setE-"+p); if(el) settings.emails[p] = el.value.trim(); });
   settings.updated = new Date().toISOString();
   const {ok, data} = await apiCall("PUT", "/api/settings", {settings});
   if(!ok){ toast(data.error||"Could not save settings."); return; }
@@ -1691,7 +1759,7 @@ function renderPack(keepSince){
       const a = area(r), s = score(r);
       return `<tr><td style="font-weight:700;color:var(--muted)">${r.id}</td>
         <td><div class="risk-title">${esc(r.title)} ${r.draft?'<span class="tag tag-draft">DRAFT</span>':""}${r.flag?'<span class="tag tag-flag">🚩</span>':""}</div><div class="risk-sub">${a.ref} ${esc(a.name)}</div></td>
-        <td style="white-space:nowrap">${esc(a.cat.owner)}</td>${com==="Board"?`<td>${esc(r.com)}</td>`:""}
+        <td style="white-space:nowrap">${esc(ownerLabel(a.cat))}</td>${com==="Board"?`<td>${esc(r.com)}</td>`:""}
         <td class="num-col">${r.l}</td><td class="num-col">${r.i}</td>
         <td><span class="pill" style="background:${bandHex(s)}">${s}</span></td>
         <td>${outsideAppetite(r)?'<span class="breach-flag">▲ outside</span>':'<span class="ok-flag">✓ within</span>'} <span class="risk-sub">${appetite(r).label}</span></td>
@@ -1719,7 +1787,7 @@ function renderPack(keepSince){
       hot.map(r=>{
         const a = area(r);
         return `<div class="hot-box"><h4>${r.id} — ${esc(r.title)} <span class="pill" style="background:${bandHex(score(r))}">${score(r)}</span></h4>
-        <div class="h-meta">${esc(a.cat.name)} · ${a.ref} ${esc(a.name)} · ${esc(a.cat.owner)} · ${appetite(r).label}${outsideAppetite(r)?' · <span class="breach-flag">outside appetite</span>':""}</div>
+        <div class="h-meta">${esc(a.cat.name)} · ${a.ref} ${esc(a.name)} · ${esc(ownerLabel(a.cat))} · ${appetite(r).label}${outsideAppetite(r)?' · <span class="breach-flag">outside appetite</span>':""}</div>
         ${r.flag?`<div class="h-meta" style="color:var(--sev);font-weight:700">🚩 Review requested by ${esc(r.flag.by)} on ${(r.flag.at||"").slice(0,10)}${r.flag.note? ": "+esc(r.flag.note):""}</div>`:""}
         <div style="font-size:12.5px">${esc(r.desc)}</div>
         ${(r.controls||[]).length?`<div class="h-lbl">Controls in place</div><ul>${r.controls.map(c=>`<li>${esc(c)}</li>`).join("")}</ul>`:""}
@@ -1771,8 +1839,8 @@ function exportJSON(mineOnly){
   // toast); anything a non-admin can export never contains hidden risks.
   let data = risks.filter(visibleToMe), del = deletedRisks.filter(visibleToMe);
   if(mineOnly){
-    data = data.filter(r=>ownerFirst(area(r).cat.owner)===role);
-    del = del.filter(r=>AREA_MAP[r.l2] && ownerFirst(area(r).cat.owner)===role);
+    data = data.filter(r=>ownerLabel(area(r).cat)===role);
+    del = del.filter(r=>AREA_MAP[r.l2] && ownerLabel(area(r).cat)===role);
     if(!data.length && !del.length){ toast("No risks in your areas yet."); return; }
   }
   const payload = { format:"tcf-risk-register", version:4, exported:new Date().toISOString(), exportedBy: role, risks:data, deleted:del, milestones, settings };
@@ -1804,7 +1872,7 @@ function exportCSV(){
   const q = v => `"${String(v==null?"":v).replace(/"/g,'""')}"`;
   const rows = sharedList().map(r=>{          // hidden risks excluded from the shareable CSV
     const a = area(r);
-    return [r.id,r.title,r.desc,a.cat.name,`${a.ref} ${a.name}`,a.cat.owner,r.com||"",r.l,r.i,score(r),band(score(r)),appetite(r).label,outsideAppetite(r)?"NO — outside":"Yes",r.status,r.review,(r.controls||[]).join("; "),(r.actions||[]).join("; "),r.draft?"Draft":"Confirmed",(r.updated||"").slice(0,10)].map(q).join(",");
+    return [r.id,r.title,r.desc,a.cat.name,`${a.ref} ${a.name}`,ownerLabel(a.cat),r.com||"",r.l,r.i,score(r),band(score(r)),appetite(r).label,outsideAppetite(r)?"NO — outside":"Yes",r.status,r.review,(r.controls||[]).join("; "),(r.actions||[]).join("; "),r.draft?"Draft":"Confirmed",(r.updated||"").slice(0,10)].map(q).join(",");
   });
   download(`tcf-risk-register-${TODAY}.csv`, [head.map(q).join(",")].concat(rows).join("\n"), "text/csv");
   toast("CSV exported.");
@@ -2039,7 +2107,7 @@ function renderTimeline(list){
 function renderMilestones(){
   const body = document.getElementById("msBody"); if(!body) return;
   const fo = document.getElementById("msOwner");
-  if(fo.options.length<=1) fo.innerHTML = '<option value="">All owners</option>' + PEOPLE.map(p=>`<option>${p}</option>`).join("");
+  if(fo.options.length<=1) fo.innerHTML = '<option value="">All owners</option>' + editorNames().map(p=>`<option>${p}</option>`).join("");
   const own = fo.value, rag = document.getElementById("msRag").value;
   const list = milestones.filter(m=> (!own || m.owner===own) && (!rag || m.rag===rag));
   const c = ragCounts(milestones);
@@ -2073,7 +2141,7 @@ function openMilestone(id){
   document.getElementById("msmTitle").value = m?m.title:"";
   document.getElementById("msmDesc").value = m?m.desc||"":"";
   document.getElementById("msmSoap").innerHTML = SOAP_ORDER.map(r=>`<option value="${r}" ${m&&m.soap===r?"selected":""}>${esc(soapLabel(r))}</option>`).join("");
-  document.getElementById("msmOwner").innerHTML = PEOPLE.map(p=>`<option ${m&&m.owner===p?"selected":(!m&&p===role?"selected":"")}>${p}</option>`).join("");
+  document.getElementById("msmOwner").innerHTML = editorNames().map(p=>`<option ${m&&m.owner===p?"selected":(!m&&p===role?"selected":"")}>${p}</option>`).join("");
   document.getElementById("msmOwner").disabled = !isAdmin();
   document.getElementById("msmYear").value = m?(m.year||"2026-27"):"2026-27";
   document.getElementById("msmDue").value = m?(m.due||""):"";
@@ -2108,6 +2176,7 @@ function openMilestone(id){
 }
 function closeMilestone(){ document.getElementById("msOverlay").classList.remove("open"); }
 async function saveMilestone(){
+  if(viewAsGuard()) return;
   if(!apiMode){ toast("This copy is read-only — open the shared link to edit."); return; }
   if(msInFlight) return; msInFlight = true;
   const btn = document.getElementById("msmSave"); btn.disabled = true;
@@ -2139,6 +2208,7 @@ async function saveMilestone(){
   } finally { msInFlight = false; btn.disabled = false; }
 }
 async function deleteMilestone(){
+  if(viewAsGuard()) return;
   if(!apiMode || !editingMs || !isAdmin()) return;
   const m = milestones.find(x=>x.id===editingMs); if(!m) return;
   if(!(await askConfirm(`Delete ${m.id}?`, `“${m.title}” will be removed from the plan for everyone.`, "Delete milestone", true))) return;
@@ -2147,11 +2217,72 @@ async function deleteMilestone(){
   closeMilestone(); await refreshState({force:true}); toast("Milestone deleted.");
 }
 
+/* ============ ACCESS MODULE (admins) ============ */
+let accDraft = null;
+function accCurrent(){
+  if(accessCfg && Array.isArray(accessCfg.users) && accessCfg.users.length)
+    return JSON.parse(JSON.stringify({users:accessCfg.users, catOwner:accessCfg.catOwner||Object.assign({},catOwn||{})}));
+  return {users:(people||[]).map(p=>({email:p.email||"", name:p.name, group:p.group})),
+          catOwner:Object.assign({},catOwn||{})};
+}
+const CAPABILITIES = [
+  ["View Home, Risk, Milestones, packs and reports","Yes","Yes","Yes"],
+  ["See hidden risks","Yes","No","No"],
+  ["Edit risks","All areas, live","Own areas - as proposals for QA","No"],
+  ["Approve / reject proposed changes","Yes","No","No"],
+  ["Hide / unhide a risk","Yes","No","No"],
+  ["Flag a risk for review","Yes","Yes","No"],
+  ["Edit milestones","Any, live","Own, live (no QA gate)","No"],
+  ["Meetings & contacts settings","Yes","No","No"],
+  ["Access module & view-as","Yes","No","No"],
+  ["Export JSON / CSV","Yes (JSON incl. hidden)","Yes (hidden excluded)","Yes (hidden excluded)"]
+];
+function renderAccess(){
+  const el = document.getElementById("accUsers"); if(!el) return;
+  if(!accDraft) accDraft = accCurrent();
+  el.innerHTML = accDraft.users.map((u,i)=>`<tr>
+    <td><input style="width:100%;font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:7px" value="${esc(u.email)}" onchange="accDraft.users[${i}].email=this.value.trim()"></td>
+    <td><input style="font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:7px" value="${esc(u.name)}" onchange="accDraft.users[${i}].name=this.value.trim();renderAccess()"></td>
+    <td><select style="font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:7px" onchange="accDraft.users[${i}].group=this.value;renderAccess()">
+      ${["admin","editor","viewer"].map(g=>`<option ${u.group===g?"selected":""}>${g}</option>`).join("")}</select></td>
+    <td><button class="btn-danger" style="padding:3px 10px;font-size:11px" onclick="accDraft.users.splice(${i},1);renderAccess()">remove</button></td>
+  </tr>`).join("");
+  const names = accDraft.users.filter(u=>u.group!=="viewer" && u.name).map(u=>u.name);
+  document.getElementById("accCats").innerHTML = TAXONOMY.map(c=>`
+    <div class="enabler-tile" style="cursor:default">${c.ref}. ${esc(c.name)}
+      <div style="margin-top:5px"><select style="font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:7px;width:100%"
+        onchange="accDraft.catOwner['${c.ref}']=this.value">
+        ${names.map(n=>`<option ${((accDraft.catOwner&&accDraft.catOwner[c.ref])||ownerLabel(c))===n?"selected":""}>${esc(n)}</option>`).join("")}
+      </select></div></div>`).join("");
+  document.getElementById("accMatrix").innerHTML = `<table class="pack-table"><thead>
+    <tr><th>Capability</th><th>Admin</th><th>Editor</th><th>Viewer</th></tr></thead><tbody>` +
+    CAPABILITIES.map(row=>`<tr>${row.map((c,j)=>`<td ${j?'style="font-size:11.5px"':'style="font-weight:600"'}>${esc(c)}</td>`).join("")}</tr>`).join("") +
+    `</tbody></table>`;
+  document.getElementById("accNote").textContent = accessCfg && accessCfg.updated
+    ? `Last saved ${String(accessCfg.updated).slice(0,10)} by ${accessCfg.updatedBy||"?"}`
+    : "Using the built-in defaults - not yet customised.";
+}
+function accAddUser(){
+  if(!accDraft) accDraft = accCurrent();
+  accDraft.users.push({email:"", name:"", group:"viewer"});
+  renderAccess();
+}
+async function saveAccess(){
+  if(viewAsGuard()) return;
+  if(!apiMode || !isAdmin() || !accDraft) return;
+  const {ok, data} = await apiCall("PUT","/api/access", {access:accDraft});
+  if(!ok){ toast(data.error||"Could not save access settings."); return; }
+  accDraft = null;
+  await refreshState({force:true});
+  renderAccess();
+  toast("Access settings saved - they take effect immediately.");
+}
+
 /* ============ INIT ============ */
 function populateFilters(){
   const fc = document.getElementById("fCat");
   fc.innerHTML = '<option value="">All categories</option>' + TAXONOMY.map(c=>`<option value="${c.ref}">${c.ref}. ${esc(c.name)}</option>`).join("");
-  const owners = [...new Set(TAXONOMY.map(c=>c.owner))];
+  const owners = [...new Set(TAXONOMY.map(c=>ownerLabel(c)))];
   document.getElementById("fOwner").innerHTML = '<option value="">All owners</option>' + owners.map(o=>`<option>${esc(o)}</option>`).join("");
   document.getElementById("fCom").innerHTML = '<option value="">All committees</option>' + Object.keys(COMMITTEES).map(c=>`<option value="${c}" title="${COMMITTEES[c]}">${c}</option>`).join("");
 }

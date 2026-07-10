@@ -346,6 +346,11 @@ window.onerror = function(msg, src, line){
       <div class="mis" id="homeMission"></div>
     </div>
     <div class="kpis" id="homeKpis"></div>
+    <div class="card">
+      <h3>Suggested priorities right now <span class="tag tag-ai">auto-generated — for SLT to challenge</span></h3>
+      <p class="ai-note" id="homePrioNote"></p>
+      <div id="homePriorities"></div>
+    </div>
     <div class="soap-grid" id="homeAmbitions"></div>
     <div style="height:10px"></div>
     <div class="soap-grid" id="homeShifts"></div>
@@ -408,60 +413,14 @@ window.onerror = function(msg, src, line){
       <div class="rubric" id="rubricOverview"></div>
     </div>
 
-    <div class="card prio-wrap">
-      <h3>Biggest organisational priorities — Q3 2026 (July–September) <span class="tag tag-ai">AI-drafted — for SLT to challenge</span></h3>
-      <p class="ai-note">This analysis was drafted by Claude (AI) from the consolidated register of 11 June 2026 — the legacy register merged with the new taxonomy — focusing on the risks sitting furthest outside draft appetite, and TCF's known plans (office move, Activate, the autumn risk-management overhaul). It is a static starting point for SLT discussion, not a live calculation: it does not update as the register changes, and the SLT should re-derive priorities at each quarterly review.</p>
-
-      <div class="card prio">
-        <h4>1 · Reputation readiness on identity and legacy</h4>
-        <p class="why">Public criticism of TCF's identity and positioning (<span class="rref" onclick="openRisk('R11')">R11</span>, scoring 16) is the highest residual risk on the register — carried over from the legacy register at 4×4 — and sits well above its Balanced: averse tolerance (≤9), with media mishandling (<span class="rref" onclick="openRisk('R13')">R13</span>, 9) right at the line.</p>
-        <ul class="next">
-          <li>Agree refreshed positioning lines on founder legacy and environment <span class="due">by 30 Sep · Jacqui &amp; Julia</span></li>
-          <li>Run a crisis communications simulation with SLT <span class="due">by 31 Oct · Jacqui</span></li>
-          <li>Confirm whether 16 is still the right residual score — or what new mitigation would move it <span class="due">Sep SLT · Jacqui</span></li>
-        </ul>
-      </div>
-
-      <div class="card prio">
-        <h4>2 · Cyber, data and continuity resilience</h4>
-        <p class="why">Cyber (<span class="rref" onclick="openRisk('R36')">R36</span>, 12) and data protection (<span class="rref" onclick="openRisk('R37')">R37</span>, 8) sit far above their Averse tolerance (≤4), and business continuity (<span class="rref" onclick="openRisk('R38')">R38</span>, 12) is outside its ≤9 line — the operational-resilience cluster most exposed as TCF digitises and the office move changes the continuity picture.</p>
-        <ul class="next">
-          <li>Test incident response and a full restore from backup <span class="due">by 31 Jul · Jim</span></li>
-          <li>Complete DPIAs for new systems and AI tools before go-live <span class="due">by 31 Aug · Jim</span></li>
-          <li>Refresh and test the BCP for the new office <span class="due">by 30 Sep · Jim</span></li>
-        </ul>
-      </div>
-
-      <div class="card prio">
-        <h4>3 · Safety-critical assurance for Fellows and staff</h4>
-        <p class="why">Fellow safety overseas (<span class="rref" onclick="openRisk('R07')">R07</span>, 9), safeguarding (<span class="rref" onclick="openRisk('R08')">R08</span>, 6) and threats against TCF people (<span class="rref" onclick="openRisk('R27')">R27</span>, 9) are all above their Averse tolerance (≤4) — these are the risks the framework says are always managed with full aversion, with peak Fellowship travel ahead.</p>
-        <ul class="next">
-          <li>Run the live test of the overseas emergency response protocol <span class="due">by 31 Jul · Nikesh</span></li>
-          <li>Complete the safeguarding audit and refresher training <span class="due">by 31 Jul · Nikesh</span></li>
-          <li>Review hostile-actor monitoring and escalation with building security <span class="due">by 30 Sep · Julia</span></li>
-        </ul>
-      </div>
-
-      <div class="card prio">
-        <h4>4 · Financial control and income resilience</h4>
-        <p class="why">Fraud and internal controls (<span class="rref" onclick="openRisk('R25')">R25</span>, 8) and donor due diligence (<span class="rref" onclick="openRisk('R17')">R17</span>, 6) sit above Averse tolerance (≤4), while income shortfall and concentration (<span class="rref" onclick="openRisk('R16')">R16</span>, 9) is at the edge of its line in a difficult funding environment.</p>
-        <ul class="next">
-          <li>Fraud awareness training incl. invoice fraud scenarios <span class="due">by 31 Aug · Jim</span></li>
-          <li>Refresh due diligence thresholds for major gifts <span class="due">by 31 Aug · Chris</span></li>
-          <li>Agree income concentration limits and diversification targets <span class="due">by 30 Sep · Chris</span></li>
-        </ul>
-      </div>
-
-      <div class="card prio">
-        <h4>5 · Protect capacity and land the new framework</h4>
-        <p class="why">Stress and change fatigue (<span class="rref" onclick="openRisk('R26')">R26</span>, 9 against ≤4) coincide with Q3 stacking the office move and the risk-management overhaul, alongside other change, on the same team (<span class="rref" onclick="openRisk('R32')">R32</span>). And this register only works if owners confirm the consolidated risks — especially the DRAFT-tagged scores and the generic risks added from the taxonomy.</p>
-        <ul class="next">
-          <li>Each owner confirms titles, scores and committee allocations in their areas <span class="due">by 31 Jul · all SLT</span></li>
-          <li>Capacity-check and sequence the autumn change calendar <span class="due">by 15 Sep · Jim &amp; Julia</span></li>
-          <li>First full quarterly SLT review using the change report; taxonomy to ARGC and Board <span class="due">by 30 Sep · Julia</span></li>
-        </ul>
-      </div>
+    <div class="card">
+      <h3>Organisational priorities</h3>
+      <p class="rubric-note">Priorities are now generated live from Mission Control data — risks, milestones and strategy together — on the <b>⌂ Home</b> page, refreshed automatically. The static quarterly list that used to live here has been retired.</p>
+      <button class="btn-soft no-print" onclick="showModule('home')">Open Home</button>
     </div>
+  </section>
+
+  <!-- DASHBOARD -->    </div>
   </section>
 
   <!-- DASHBOARD -->
@@ -1914,8 +1873,91 @@ function soapCardHTML(it, kind){
     ${risksTop.length ? `<div style="margin-top:8px"><span class="kind">Biggest linked risks</span>${risksTop.map(r=>`<div class="ms-mini" onclick="openRisk('${r.id}')"><span class="pill" style="background:${bandHex(score(r))};min-width:26px;padding:1px 6px;font-size:11px">${score(r)}</span><span>${esc(r.title)}</span></div>`).join("")}</div>` : ""}
   </div>`;
 }
+/* ---- live priority engine: clusters signals from risks + milestones + strategy
+   by SOAP objective and writes the rationale from the underlying items ---- */
+function computePriorities(){
+  const sig = {};
+  const add = (ref, pts, driver, action) => {
+    if(!ref) return;
+    sig[ref] = sig[ref] || {score:0, drivers:[], actions:[]};
+    sig[ref].score += pts;
+    if(driver) sig[ref].drivers.push(driver);
+    if(action) sig[ref].actions.push(action);
+  };
+  const open = liveList().filter(r=>r.status!=="Closed");
+  for(const r of open){
+    const ref = CAT_TO_SOAP[String(r.l2).split(".")[0]];
+    const tol = appetite(r).max, s = score(r);
+    if(s > tol){
+      add(ref, (s - tol) + s*0.3,
+        {kind:"risk", id:r.id, open:`openRisk('${r.id}')`, text:`${r.id} “${r.title}” scores ${s} against a tolerance of ≤${tol}`},
+        (r.actions&&r.actions[0]) ? {text:r.actions[0], due:r.review||"", open:`openRisk('${r.id}')`} : null);
+    }
+    if(r.flag) add(ref, 4, {kind:"risk", id:r.id, open:`openRisk('${r.id}')`, text:`${r.id} is flagged for review by ${r.flag.by}`}, null);
+    if(overdue(r)) add(ref, 2, {kind:"risk", id:r.id, open:`openRisk('${r.id}')`, text:`${r.id} review is overdue (was due ${r.review})`}, null);
+  }
+  for(const m of milestones){
+    if(m.rag==="Done") continue;
+    if(m.rag==="Off track")
+      add(m.soap, 14, {kind:"ms", id:m.id, open:`openMilestone('${m.id}')`, text:`${m.id} “${m.title}” is off track`},
+        {text:`Recover ${m.id} “${m.title}”`, due:m.due||"", open:`openMilestone('${m.id}')`});
+    else if(m.rag==="At risk")
+      add(m.soap, 8, {kind:"ms", id:m.id, open:`openMilestone('${m.id}')`, text:`${m.id} “${m.title}” is at risk (due ${m.due||"—"})`},
+        {text:`Get ${m.id} back on track`, due:m.due||"", open:`openMilestone('${m.id}')`});
+    else if(m.due && m.due < TODAY)
+      add(m.soap, 10, {kind:"ms", id:m.id, open:`openMilestone('${m.id}')`, text:`${m.id} “${m.title}” is past due (${m.due}) but not marked done`},
+        {text:`Close out or re-plan ${m.id}`, due:m.due, open:`openMilestone('${m.id}')`});
+    else if(m.due){
+      const days = Math.round((Date.parse(m.due)-Date.parse(TODAY))/86400000);
+      if(days<=45 && (m.progress||0)<50)
+        add(m.soap, 5, {kind:"ms", id:m.id, open:`openMilestone('${m.id}')`, text:`${m.id} is due in ${days} days at ${m.progress||0}% progress`}, null);
+    }
+  }
+  const stale = pendingList().filter(p=> p.pending && p.pending.at && (Date.now()-Date.parse(p.pending.at)) > 48*3600*1000);
+  if(stale.length) add("E6", 6+2*stale.length,
+    {kind:"gov", open:`showModule('approvals')`, text:`${stale.length} proposed change${stale.length>1?"s":""} waiting more than 48h for QA approval`},
+    {text:"Clear the approvals queue", due:"", open:`showModule('approvals')`});
+  const tbc = SOAP.ambitions.reduce((t,a)=>t+a.measures.filter(x=>x.target==="TBC").length,0);
+  if(tbc && TODAY < "2026-10-01") add("S3", 6,
+    {kind:"strategy", open:`openMilestone('M19')`, text:`${tbc} strategy measures still show “target TBC” ahead of the 1 Oct SOAP launch`},
+    {text:"Set the remaining SOAP targets (M19)", due:"2026-11-30", open:`openMilestone('M19')`});
+
+  return Object.entries(sig).map(([ref,v])=>({ref, ...v}))
+    .filter(p=>p.drivers.length)
+    .sort((a,b)=>b.score-a.score).slice(0,5)
+    .map((p,i)=>{
+      const it = soapItem(p.ref);
+      const ms = p.drivers.filter(d=>d.kind==="ms").length, rk = p.drivers.filter(d=>d.kind==="risk").length;
+      const verb = ms>rk ? "Keep the plan on track" : rk ? "Reduce risk exposure" : "Needs attention";
+      const actions = p.actions.filter(Boolean).sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999")).slice(0,3);
+      return {...p, actions, title:`${i+1} · ${verb} — ${it?it.title:p.ref}`};
+    });
+}
+function renderPriorities(){
+  const el = document.getElementById("homePriorities"); if(!el) return;
+  document.getElementById("homePrioNote").textContent =
+    "Generated automatically from live Mission Control data — appetite breaches, milestone status, due dates, flags and approvals — clustered by strategy objective and recalculated on every load (" + TODAY + "). It reflects what the data says, not a judgement: challenge it, then act on it.";
+  const ps = computePriorities();
+  el.innerHTML = ps.length ? ps.map(p=>`
+    <div class="card prio">
+      <h4>${esc(p.title)}</h4>
+      ${p.drivers.slice(0,4).map(dr=>`<div class="ms-mini" onclick="${dr.open||""}"><span class="rag-dot" style="background:${dr.kind==="ms"?"#EF6C00":dr.kind==="risk"?"#C62828":"#4527a0"}"></span><span>${esc(dr.text)}</span></div>`).join("")}
+      ${p.actions.length?`<ul class="next">${p.actions.map(a=>`<li style="cursor:pointer" onclick="${a.open||""}">${esc(a.text)}${a.due?` <span class="due">by ${a.due}</span>`:""}</li>`).join("")}</ul>`:""}
+    </div>`).join("")
+    : '<div class="none-msg">Nothing is signalling for attention right now — everything is within appetite and on track. 🎉</div>';
+  // standing notices: launch-critical items that should not have to out-score breaches
+  const notices = [];
+  const tbcN = SOAP.ambitions.reduce((t,a)=>t+a.measures.filter(x=>x.target==="TBC").length,0);
+  if(tbcN && TODAY < "2026-10-01" && !ps.some(p=>p.ref==="S3"))
+    notices.push(`<div class="ms-mini" onclick="openMilestone('M19')"><span class="rag-dot" style="background:#4527a0"></span><span>Also standing: ${tbcN} strategy measures still show <b>target TBC</b> ahead of the 1 Oct SOAP launch — resolve via M19.</span></div>`);
+  const staleN = pendingList().filter(p=> p.pending && p.pending.at && (Date.now()-Date.parse(p.pending.at)) > 48*3600*1000).length;
+  if(staleN && !ps.some(p=>p.ref==="E6"))
+    notices.push(`<div class="ms-mini" onclick="showModule('approvals')"><span class="rag-dot" style="background:#4527a0"></span><span>Also standing: ${staleN} proposal${staleN>1?"s":""} waiting over 48h in Approvals.</span></div>`);
+  if(notices.length) el.innerHTML += `<div class="card" style="border-left:4px solid #4527a0">${notices.join("")}</div>`;
+}
 function renderHome(){
   const hv = document.getElementById("homeVision"); if(!hv) return;
+  renderPriorities();
   hv.textContent = SOAP.vision;
   document.getElementById("homeMission").textContent = SOAP.mission;
   const open = liveList().filter(r=>r.status!=="Closed");

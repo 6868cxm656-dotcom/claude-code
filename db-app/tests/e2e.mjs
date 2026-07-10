@@ -210,5 +210,29 @@ import { SEED_MILESTONES } from '../seed.mjs';
   ok(d(jim).getElementById('msBody').style.display==='', 'toggle back to list');
 }
 
+
+// --- live priority engine on Home ---
+{
+  await jim.refreshState({force:true});
+  jim.showModule('home');
+  const cards = d(jim).querySelectorAll('#homePriorities .prio');
+  ok(cards.length>=3 && cards.length<=5, 'priority cards generated ('+cards.length+')');
+  const txt = d(jim).getElementById('homePriorities').textContent;
+  ok(txt.includes('R11'), 'top appetite breach (R11) drives a priority');
+  ok(txt.includes('M01'), 'at-risk milestone M01 drives a priority');
+  ok(txt.includes('TBC'), 'TBC strategy targets surface before 1 Oct');
+  ok(d(jim).getElementById('homePrioNote').textContent.includes('recalculated'), 'note explains live generation');
+  // dynamism: mark M01 off track -> its area should gain weight and text update
+  jim.openMilestone('M01');
+  d(jim).getElementById('msmRag').value='Off track';
+  await jim.saveMilestone(); await sleep(250);
+  jim.showModule('home');
+  ok(d(jim).getElementById('homePriorities').textContent.includes('off track'), 'engine reacts to live data change');
+  // static block gone from Overview; pointer present
+  jim.showModule('risk');
+  ok(!d(jim).getElementById('view-overview').textContent.includes('Biggest organisational priorities'), 'static list removed from Overview');
+  ok(d(jim).getElementById('view-overview').textContent.includes('generated live'), 'Overview points to Home');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

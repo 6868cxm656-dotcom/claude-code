@@ -188,5 +188,27 @@ import { SEED_MILESTONES } from '../seed.mjs';
   ok(d(off).getElementById('msmSave').style.display==='none', 'offline milestone read-only');
 }
 
+
+// --- milestone timeline view ---
+{
+  jim.showModule('milestones');
+  jim.setMsView('timeline');
+  ok(d(jim).getElementById('msTimeline').style.display==='', 'timeline visible after toggle');
+  ok(d(jim).getElementById('msBody').style.display==='none', 'list hidden in timeline view');
+  const dots = d(jim).querySelectorAll('#msTimeline .tl-dot:not(.tl-legend .tl-dot)');
+  ok(d(jim).querySelectorAll('#msTimeline .tl-lane .tl-dot').length===20, 'timeline renders 20 dots ('+d(jim).querySelectorAll('#msTimeline .tl-lane .tl-dot').length+')');
+  ok(d(jim).querySelectorAll('#msTimeline .tl-months span').length===12, '12 month labels');
+  ok(d(jim).querySelectorAll('#msTimeline .tl-legend .li').length>=4, 'legend has 4 statuses');
+  // glyph secondary encoding present for the at-risk milestone (M01 set earlier)
+  const atRisk = [...d(jim).querySelectorAll('#msTimeline .tl-lane .tl-dot')].find(x=>x.getAttribute('aria-label').startsWith('M01'));
+  ok(atRisk && atRisk.textContent.trim()==='!', 'at-risk dot carries ! glyph (not colour-alone)');
+  // dot click opens the milestone
+  atRisk.dispatchEvent(new jim.Event('click',{bubbles:true}));
+  ok(d(jim).getElementById('msOverlay').classList.contains('open') && d(jim).getElementById('msTitle').textContent.startsWith('M01'), 'dot click opens milestone');
+  jim.closeMilestone();
+  jim.setMsView('list');
+  ok(d(jim).getElementById('msBody').style.display==='', 'toggle back to list');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

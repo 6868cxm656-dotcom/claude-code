@@ -13,12 +13,23 @@ budget workbook (Xero-coded lines) into a single self-contained HTML page with:
   lines, micro-budgets, missing phasing, and phasing that doesn't reconcile to
   the annual figure.
 
+It also ingests the monthly Xero **Detailed Budget Variance report** (phased
+YTD), adding a **Monthly variance** tab — favourable/adverse status against
+phased YTD budget, exceptions-first ordering with commentary-by-exception,
+unmapped postings as a blocking validation, and a toggle that re-reads the
+report through the **proposed simplified structure** (121 codes → 39 reporting
+lines, defined in `structure.py`), shown in full on its own tab.
+
 ## Usage
 
 ```
 pip install openpyxl
-python3 build.py "2026-27 Budget.xlsx" dashboard.html
+python3 build.py "2026-27 Budget.xlsx" dashboard.html "Monthly variance report.xlsx"
 ```
+
+The variance report argument is optional; without it the Monthly variance tab
+is empty. `structure.py` holds the code → reporting-line mapping and asserts
+every code is mapped exactly once.
 
 The workbook is expected in the current 26/27 budget layout: header row 3 with
 Department / Classification / Activity / Type / Code / Acc Name in columns A–F,

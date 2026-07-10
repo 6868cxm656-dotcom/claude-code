@@ -5,6 +5,7 @@
   "main": "db-app/worker.js",
   "compatibility_date": "2026-06-15",
   "assets": { "directory": "db-app/public", "binding": "ASSETS" },
+  "triggers": { "crons": ["0 3 * * *"] },
   "d1_databases": [
     { "binding": "DB", "database_name": "tcf-risk-register", "database_id": "5694510a-a910-418d-a04b-4f171c7e2f92" }
   ]

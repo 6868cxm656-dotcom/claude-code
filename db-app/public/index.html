@@ -295,6 +295,7 @@
 <div id="jsError" style="display:none;background:#fdecea;color:#A81B12;padding:14px 28px;font-weight:600"></div>
 <div id="apiBanner" style="display:none;background:#fff8e1;color:#7a5d00;padding:10px 28px;font-weight:600;border-bottom:1px solid #f0d98a"></div>
 <div id="vaBanner" style="display:none;background:#ede7f6;color:#4527a0;padding:10px 28px;font-weight:600;border-bottom:1px solid #d1c4e9"></div>
+<div id="seedBanner" style="display:none;background:#fdecea;color:#A81B12;padding:10px 28px;font-weight:600;border-bottom:1px solid #f0b9b4"></div>
 <script>
 window.onerror = function(msg, src, line){
   var d = document.getElementById("jsError");
@@ -571,9 +572,26 @@ window.onerror = function(msg, src, line){
       <h3>What each group can do</h3>
       <div class="table-scroll"><div id="accMatrix"></div></div>
     </div>
+    <div class="card">
+      <h3>Sign-in verification <span class="hint">hardening — cryptographically check every request's Cloudflare Access token</span></h3>
+      <p class="rubric-note" id="accJwtStatus"></p>
+      <div class="filters">
+        <label for="accTeam">Team domain</label>
+        <input id="accTeam" type="text" placeholder="e.g. churchillfellowship" style="font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:7px;width:190px" onchange="if(accDraft)accDraft.teamDomain=this.value.trim()">
+        <label for="accAud">Application Audience (AUD) tag</label>
+        <input id="accAud" type="text" placeholder="64-character tag from Zero Trust" style="font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:7px;flex:1;min-width:220px" onchange="if(accDraft)accDraft.aud=this.value.trim()">
+      </div>
+      <div class="count-note" style="margin-top:6px">Both values come from Cloudflare <b>Zero Trust → Access → Applications</b> → this app: the team domain is the part before <b>.cloudflareaccess.com</b>, and the AUD tag is on the application's Overview tab. Saved with the button below. Clear both fields to switch verification off. The server checks your own current sign-in against the values before enabling them, so you cannot lock yourself out with a typo.</div>
+    </div>
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:30px">
       <button class="btn-primary" onclick="saveAccess()">Save access settings</button>
       <span class="count-note" id="accNote"></span>
+    </div>
+    <div class="card" style="margin-bottom:30px">
+      <h3>Backups <span class="hint">automatic daily snapshots at 03:00 UTC — the newest 30 are kept</span></h3>
+      <p class="rubric-note">Restoring replaces all risks, milestones and meeting settings with the snapshot's contents. Access settings (this page) are deliberately kept as they are now, and a safety snapshot of the current state is taken first — so a restore can itself be undone.</p>
+      <button class="btn-soft" onclick="takeSnapshotNow()">📸 Take a snapshot now</button>
+      <div id="accSnaps" style="margin-top:10px"></div>
     </div>
   </section>
 
@@ -793,7 +811,7 @@ const BASELINE_MILESTONES = [{"id":"M01","soap":"A1","owner":"Nikesh","com":"Boa
 /* BASELINE-MS:END */
 
 /* ============ STATE ============ */
-const APP_VERSION = "v2026-07-10b";
+const APP_VERSION = "v2026-07-10c";
 const TODAY = new Date().toISOString().slice(0,10);
 const PEOPLE = ["Julia","Jim","Nikesh","Jacqui","Chris"];
 const ADMINS = ["Jim","Julia"];                       // access-all-areas
@@ -816,6 +834,8 @@ let meAdmin = false;                 // admin per the server (configurable)
 let people = null;                   // staff directory from the access config
 let catOwn = null;                   // effective category ownership
 let accessCfg = null;                // raw access config (admins only)
+let jwtEnforced = false;             // is sign-in (JWT) verification on server-side?
+let seededAt = null, lastSnap = null; // re-seed tripwire inputs from /api/state
 let viewAs = null;                   // admin preview of another user's view
 let saveInFlight = false;
 let sortKey = "score", sortDir = -1;
@@ -935,9 +955,26 @@ async function refreshState(opts){
   risks = data.risks; deletedRisks = data.deleted || []; milestones = data.milestones || []; settings = mergeSettings(data.settings);
   people = data.people || people; catOwn = data.catOwner || catOwn;
   if(data.access !== undefined) accessCfg = data.access;
+  if(data.security) jwtEnforced = !!data.security.jwtEnforced;
+  seededAt = data.seededAt || null; lastSnap = data.lastSnapshot || null;
   if(data.me) applyMe(data.me);
+  updateSeedBanner(data.me);
   renderAll();
   return true;
+}
+/* Re-seed tripwire: `seeded_at` is only ever written when the worker seeds an
+   EMPTY database. If admins see it newer than the latest backup (or with no
+   backup at all), the D1 was wiped and silently resurrected the June 2026
+   baseline — warn loudly so someone restores a snapshot instead of trusting it. */
+function updateSeedBanner(me){
+  const b = document.getElementById("seedBanner"); if(!b) return;
+  const tripped = me && me.realAdmin && seededAt && (!lastSnap || seededAt > lastSnap);
+  if(tripped){
+    b.innerHTML = "⚠ This database was (re)initialised from the built-in baseline on " + esc(String(seededAt).slice(0,10)) +
+      (lastSnap ? ", which is AFTER the most recent backup (" + esc(String(lastSnap).slice(0,10)) + ")." : " and no backup has been taken since.") +
+      " If that was not deliberate, restore a snapshot under <b>Access → Backups</b>. If this is a fresh install, taking a snapshot clears this warning.";
+    b.style.display = "";
+  } else b.style.display = "none";
 }
 
 /* ============ HELPERS ============ */
@@ -1112,7 +1149,7 @@ function showModule(m){
   if(m==="milestones") renderMilestones();
   if(m==="pack") renderPack();
   if(m==="approvals") renderApprovals();
-  if(m==="access") renderAccess();
+  if(m==="access"){ renderAccess(); renderBackups(); }
 }
 
 /* ---- dashboard ---- */
@@ -2220,10 +2257,13 @@ async function deleteMilestone(){
 /* ============ ACCESS MODULE (admins) ============ */
 let accDraft = null;
 function accCurrent(){
-  if(accessCfg && Array.isArray(accessCfg.users) && accessCfg.users.length)
-    return JSON.parse(JSON.stringify({users:accessCfg.users, catOwner:accessCfg.catOwner||Object.assign({},catOwn||{})}));
-  return {users:(people||[]).map(p=>({email:p.email||"", name:p.name, group:p.group})),
-          catOwner:Object.assign({},catOwn||{})};
+  const base = (accessCfg && Array.isArray(accessCfg.users) && accessCfg.users.length)
+    ? JSON.parse(JSON.stringify({users:accessCfg.users, catOwner:accessCfg.catOwner||Object.assign({},catOwn||{})}))
+    : {users:(people||[]).map(p=>({email:p.email||"", name:p.name, group:p.group})),
+       catOwner:Object.assign({},catOwn||{})};
+  base.teamDomain = (accessCfg && accessCfg.teamDomain) || "";
+  base.aud = (accessCfg && accessCfg.aud) || "";
+  return base;
 }
 const CAPABILITIES = [
   ["View Home, Risk, Milestones, packs and reports","Yes","Yes","Yes"],
@@ -2235,6 +2275,7 @@ const CAPABILITIES = [
   ["Edit milestones","Any, live","Own, live (no QA gate)","No"],
   ["Meetings & contacts settings","Yes","No","No"],
   ["Access module & view-as","Yes","No","No"],
+  ["Backups — take, download, restore","Yes","No","No"],
   ["Export JSON / CSV","Yes (JSON incl. hidden)","Yes (hidden excluded)","Yes (hidden excluded)"]
 ];
 function renderAccess(){
@@ -2261,6 +2302,59 @@ function renderAccess(){
   document.getElementById("accNote").textContent = accessCfg && accessCfg.updated
     ? `Last saved ${String(accessCfg.updated).slice(0,10)} by ${accessCfg.updatedBy||"?"}`
     : "Using the built-in defaults - not yet customised.";
+  const td = document.getElementById("accTeam"), ad = document.getElementById("accAud");
+  if(td && document.activeElement!==td) td.value = accDraft.teamDomain||"";
+  if(ad && document.activeElement!==ad) ad.value = accDraft.aud||"";
+  const js = document.getElementById("accJwtStatus");
+  if(js) js.innerHTML = jwtEnforced
+    ? '✅ <b>Verification is ON.</b> Every request must carry a valid Cloudflare Access token, checked against Cloudflare&rsquo;s public signing keys — identity cannot be spoofed even if the Access policy in front of the URL were removed.'
+    : '⚠ <b>Verification is OFF.</b> The app currently trusts the identity header Cloudflare adds at the edge, which is safe only while this URL sits behind the Access policy. Enter the two values below and save to switch it on.';
+}
+/* ---- backups (admins) ---- */
+async function renderBackups(){
+  const el = document.getElementById("accSnaps"); if(!el || !apiMode || !isAdmin()) return;
+  el.innerHTML = '<span class="count-note">Loading backups…</span>';
+  const {ok, data} = await apiCall("GET","/api/snapshots");
+  if(!ok){ el.innerHTML = '<span class="count-note">Could not load the backup list — ' + esc(data.error||"try reloading") + '</span>'; return; }
+  const rows = data.snapshots || [];
+  el.innerHTML = rows.length
+    ? '<div class="table-scroll"><table class="pack-table"><thead><tr><th>Taken (UTC)</th><th>Size</th><th></th></tr></thead><tbody>' +
+      rows.map(s=>`<tr><td>${esc(String(s.ts).replace("T"," ").slice(0,19))}</td><td style="font-size:11.5px">${Math.max(1,Math.round((s.bytes||0)/1024))} KB</td>
+        <td style="white-space:nowrap"><button class="btn-soft" style="padding:3px 10px;font-size:11px" onclick="downloadSnapshot('${esc(s.ts)}')">⬇ Download</button>
+        <button class="btn-danger" style="padding:3px 10px;font-size:11px;margin-left:6px" onclick="restoreSnap('${esc(s.ts)}')">Restore</button></td></tr>`).join("") +
+      '</tbody></table></div>'
+    : '<span class="count-note">No backups yet — the first automatic snapshot runs at 03:00 UTC tonight, or take one now.</span>';
+}
+async function takeSnapshotNow(){
+  if(viewAsGuard()) return;
+  if(!apiMode || !isAdmin()) return;
+  const {ok, data} = await apiCall("POST","/api/snapshot", {});
+  if(!ok){ toast(data.error||"Could not take a snapshot."); return; }
+  toast("Snapshot taken — " + (data.snapshot ? data.snapshot.risks + " risks, " + data.snapshot.milestones + " milestones." : "done."));
+  await refreshState({force:true});
+  renderBackups();
+}
+async function downloadSnapshot(ts){
+  const {ok, data} = await apiCall("GET","/api/snapshot/"+encodeURIComponent(ts));
+  if(!ok){ toast(data.error||"Could not fetch that snapshot."); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "tcf-mission-control-backup-" + String(ts).replace(/[:]/g,"-").slice(0,19) + ".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+}
+async function restoreSnap(ts){
+  if(viewAsGuard()) return;
+  if(!apiMode || !isAdmin()) return;
+  if(!(await askConfirm("Restore this backup?",
+    "All risks, milestones and meeting settings will be replaced with the data from " + String(ts).replace("T"," ").slice(0,16) + " UTC. Access settings are kept as they are now, and a safety snapshot of the current state is taken first.",
+    "Restore backup", true))) return;
+  const {ok, data} = await apiCall("POST","/api/snapshot/"+encodeURIComponent(ts)+"/restore", {});
+  if(!ok){ toast(data.error||"Restore failed — nothing was changed."); return; }
+  toast("Backup restored for everyone.");
+  await refreshState({force:true});
+  renderBackups();
 }
 function accAddUser(){
   if(!accDraft) accDraft = accCurrent();

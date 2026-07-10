@@ -194,6 +194,8 @@ export function validateAccessConfig(cfg, requesterName){
   const editable = new Set(cfg.users.filter(u=>u.group!=="viewer").map(u=>u.name));
   for(const [c,o] of Object.entries(cfg.catOwner||{}))
     if(o && !editable.has(o)) return `Area owner "${o}" is not an admin or editor in the user list`;
+  if(cfg.teamDomain && !cfg.aud) return "Sign-in verification needs both a team domain and an AUD tag";
+  if(cfg.aud && !cfg.teamDomain) return "Sign-in verification needs both a team domain and an AUD tag";
   return null;
 }
 export function peopleFromConfig(cfg){

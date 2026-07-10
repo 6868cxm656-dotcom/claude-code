@@ -293,7 +293,136 @@ import { SEED_MILESTONES } from '../seed.mjs';
   jim.showModule('access');
   ok(d(jim).querySelectorAll('#accUsers tr').length>=5, 'access users table renders');
   ok(d(jim).querySelectorAll('#accCats .enabler-tile').length===8, '8 ownership tiles');
-  ok(d(jim).querySelectorAll('#accMatrix tbody tr').length===10, 'capability matrix 10 rows');
+  ok(d(jim).querySelectorAll('#accMatrix tbody tr').length===11, 'capability matrix 11 rows');
+}
+
+
+// --- backups: snapshots, restore, re-seed tripwire ---
+{
+  const apiJ = (method, path, body) => worker.fetch(new Request('https://tcf.example'+path,
+    {method, headers:{'Cf-Access-Authenticated-User-Email':JIM,'content-type':'application/json'},
+     body: body?JSON.stringify(body):undefined}), env);
+  const apiN = (method, path, body) => worker.fetch(new Request('https://tcf.example'+path,
+    {method, headers:{'Cf-Access-Authenticated-User-Email':NIK,'content-type':'application/json'},
+     body: body?JSON.stringify(body):undefined}), env);
+
+  // fresh-seed tripwire: this test DB was seeded this run and has no backup yet
+  await jim.refreshState({force:true}); await sleep(60);
+  ok(d(jim).getElementById('seedBanner').style.display==='', 'tripwire banner shows on freshly-seeded DB with no backup');
+  ok(d(nik).getElementById('seedBanner').style.display==='none', 'tripwire banner is admin-only');
+
+  // permission walls
+  ok((await apiN('POST','/api/snapshot',{})).status===403, 'snapshot take is admin-only');
+  ok((await apiN('GET','/api/snapshots')).status===403, 'snapshot list is admin-only');
+
+  // take one from the UI; tripwire clears; list renders
+  jim.showModule('access'); await sleep(150);
+  await jim.takeSnapshotNow(); await sleep(250);
+  const list1 = await (await apiJ('GET','/api/snapshots')).json();
+  ok(list1.snapshots.length>=1 && list1.snapshots[0].bytes>1000, 'snapshot taken and listed with size');
+  ok(d(jim).getElementById('seedBanner').style.display==='none', 'tripwire clears once a backup exists');
+  ok(d(jim).getElementById('accSnaps').textContent.includes('Restore'), 'backups table renders in Access module');
+  const ts = list1.snapshots[0].ts;
+
+  // download route returns the full raw state
+  const dl = await (await apiJ('GET','/api/snapshot/'+encodeURIComponent(ts))).json();
+  ok(Array.isArray(dl.risks) && dl.risks.length>=40 && Array.isArray(dl.milestones) && dl.settings, 'snapshot download contains full state');
+
+  // mutate data AND access config after the snapshot…
+  ok((await apiJ('POST','/api/risk/R06/visibility',{hidden:true})).status===200, 'post-snapshot mutation applied');
+  const jsNow = await state(JIM);
+  const usersNow = jsNow.people.map(p=>({email:p.email, name:p.name, group:p.group}))
+    .concat([{email:'katherine.x@churchillfellowship.org', name:'Katherine', group:'editor'}]);
+  ok((await apiJ('PUT','/api/access',{access:{users:usersNow, catOwner:jsNow.catOwner}})).status===200, 'post-snapshot access change applied');
+
+  // …restore: data reverts, access config survives, safety snapshot taken first
+  ok((await apiN('POST','/api/snapshot/'+encodeURIComponent(ts)+'/restore',{})).status===403, 'restore is admin-only');
+  await sleep(5);
+  ok((await apiJ('POST','/api/snapshot/'+encodeURIComponent(ts)+'/restore',{})).status===200, 'restore succeeds');
+  ok((await state(JIM)).risks.find(r=>r.id==='R06').hidden!==true, 'restore reverts post-snapshot data change');
+  ok((await state('katherine.x@churchillfellowship.org')).me.role==='Katherine', 'restore keeps the CURRENT access config (no lockout from old configs)');
+  const list2 = await (await apiJ('GET','/api/snapshots')).json();
+  ok(list2.snapshots.length>list1.snapshots.length, 'restore left a safety snapshot of the pre-restore state');
+  ok((await apiJ('POST','/api/snapshot/nonsense/restore',{})).status===404, 'restoring an unknown snapshot is a 404');
+
+  // the daily cron entry point works
+  await sleep(5);
+  await worker.scheduled({}, env, {});
+  const list3 = await (await apiJ('GET','/api/snapshots')).json();
+  ok(list3.snapshots.length>list2.snapshots.length, 'scheduled (cron) handler takes a snapshot');
+
+  // put the access config back for any later tests
+  const baseUsers = jsNow.people.map(p=>({email:p.email, name:p.name, group:p.group}));
+  ok((await apiJ('PUT','/api/access',{access:{users:baseUsers, catOwner:jsNow.catOwner}})).status===200, 'access config restored');
+}
+
+
+// --- sign-in (JWT) verification — isolated environment with a real RSA keypair ---
+{
+  const env2 = { DB: makeDB(), ASSETS:{ fetch:async()=>new Response('PAGE') } };
+  const TEAM='testteam', AUD='a'.repeat(64);
+  const genKey = () => crypto.subtle.generateKey(
+    {name:'RSASSA-PKCS1-v1_5', modulusLength:2048, publicExponent:new Uint8Array([1,0,1]), hash:'SHA-256'},
+    true, ['sign','verify']);
+  const kp = await genKey(), rogue = await genKey();
+  const pubJwk = await crypto.subtle.exportKey('jwk', kp.publicKey);
+  pubJwk.kid='test-key-1'; pubJwk.use='sig'; pubJwk.alg='RS256';
+  const b64u = s => Buffer.from(s).toString('base64url');
+  async function sign(payload, key=kp.privateKey, kid='test-key-1'){
+    const hp = b64u(JSON.stringify({alg:'RS256', kid})) + '.' + b64u(JSON.stringify(payload));
+    const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(hp));
+    return hp + '.' + Buffer.from(sig).toString('base64url');
+  }
+  const claims = (email, over={}) => ({iss:'https://'+TEAM+'.cloudflareaccess.com', aud:[AUD], email,
+    exp:Math.floor(Date.now()/1000)+600, ...over});
+  // the worker fetches Cloudflare's JWKS once — serve our test key from a patched global fetch
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u, o) => String(u).includes(TEAM+'.cloudflareaccess.com/cdn-cgi/access/certs')
+    ? new Response(JSON.stringify({keys:[pubJwk]}), {headers:{'content-type':'application/json'}})
+    : realFetch(u, o);
+  const api = (email, method, path, body, jwt) => worker.fetch(new Request('https://tcf.example'+path,
+    {method, headers:Object.assign({'content-type':'application/json'},
+        email?{'Cf-Access-Authenticated-User-Email':email}:{}, jwt?{'Cf-Access-Jwt-Assertion':jwt}:{}),
+     body: body?JSON.stringify(body):undefined}), env2);
+
+  const st0 = await (await api(JIM,'GET','/api/state')).json();
+  ok(st0.security && st0.security.jwtEnforced===false, 'verification is off by default (header fallback)');
+  const users = st0.people.map(p=>({email:p.email, name:p.name, group:p.group}));
+
+  // lockout guards on enabling
+  ok((await api(JIM,'PUT','/api/access',{access:{users, catOwner:st0.catOwner, teamDomain:TEAM, aud:AUD}})).status===400,
+    'refuses to enable when the admin\'s own request has no verifiable token');
+  ok((await api(JIM,'PUT','/api/access',{access:{users, catOwner:st0.catOwner, teamDomain:TEAM}})).status===400,
+    'team domain without an AUD tag is rejected');
+  // enable with a valid token (pasting the full team URL is normalised to the domain)
+  const en = await api(JIM,'PUT','/api/access',
+    {access:{users, catOwner:st0.catOwner, teamDomain:'https://'+TEAM+'.cloudflareaccess.com', aud:AUD}},
+    await sign(claims(JIM)));
+  ok(en.status===200, 'verification enabled with a valid token ('+en.status+')');
+
+  // enforced: the header alone is no longer trusted
+  ok((await api(JIM,'GET','/api/state')).status===401, 'header-only request rejected once enforced');
+  const stJwt = await (await api('spoof@evil.example','GET','/api/state', null, await sign(claims(NIK)))).json();
+  ok(stJwt.me && stJwt.me.email===NIK && stJwt.me.role==='Nikesh', 'identity comes from the verified token, not the header');
+  ok(stJwt.security.jwtEnforced===true, 'state reports enforcement is on');
+  ok(!stJwt.risks.find(r=>r.id==='R41'), 'hidden risks still stripped under JWT identity');
+
+  // attack tokens all bounce
+  const good = await sign(claims(JIM));
+  const parts = good.split('.');
+  const forged = parts[0]+'.'+b64u(JSON.stringify(claims('attacker@evil.example')))+'.'+parts[2];
+  ok((await api(null,'GET','/api/state', null, forged)).status===401, 'tampered payload rejected');
+  ok((await api(null,'GET','/api/state', null, await sign(claims(JIM), rogue.privateKey))).status===401, 'token signed by a rogue key rejected');
+  ok((await api(null,'GET','/api/state', null, await sign(claims(JIM), rogue.privateKey, 'other-kid'))).status===401, 'unknown signing key rejected');
+  ok((await api(null,'GET','/api/state', null, await sign(claims(JIM,{exp:Math.floor(Date.now()/1000)-10})))).status===401, 'expired token rejected');
+  ok((await api(null,'GET','/api/state', null, await sign(claims(JIM,{aud:['something-else']})))).status===401, 'wrong audience rejected');
+  ok((await api(null,'GET','/api/state', null, await sign(claims(JIM,{iss:'https://otherteam.cloudflareaccess.com'})))).status===401, 'wrong issuer rejected');
+
+  // switching off requires a verified request too, then the header fallback returns
+  ok((await api(JIM,'PUT','/api/access',{access:{users, catOwner:st0.catOwner}}, await sign(claims(JIM)))).status===200, 'verification switched off (both fields cleared)');
+  ok((await api(JIM,'GET','/api/state')).status===200, 'header fallback works again after disabling');
+
+  globalThis.fetch = realFetch;
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

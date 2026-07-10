@@ -19,6 +19,10 @@ async function ensureInit(env){
   await env.DB.exec("CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL)");
   const cnt = await env.DB.prepare("SELECT COUNT(*) AS n FROM risks").first();
   if(cnt && cnt.n > 0) return;
+  // record when (re)seeding happens: if this is ever newer than the latest
+  // snapshot, the front-end warns admins that the DB was re-initialised.
+  await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('seeded_at',?)")
+    .bind(new Date().toISOString()).run();
   const stmts = [];
   for(const r of SEED_RISKS){
     stmts.push(env.DB.prepare(
@@ -44,6 +48,46 @@ async function ensureExtras(env){
 
 // Milestones module storage: created and seeded independently of the risks table
 // (which is already populated on the production database).
+/* ============ SNAPSHOTS (backups) ============ */
+async function ensureSnapshots(env){
+  await env.DB.exec("CREATE TABLE IF NOT EXISTS snapshots (ts TEXT PRIMARY KEY, data TEXT NOT NULL)");
+}
+async function collectState(env){
+  const out = {};
+  for(const [key, sql] of [["risks","SELECT data FROM risks"],["deleted","SELECT data FROM deleted"],["milestones","SELECT data FROM milestones"]]){
+    const rows = await env.DB.prepare(sql).all();
+    out[key] = (rows.results||[]).map(x=>JSON.parse(x.data));
+  }
+  const g = await env.DB.prepare("SELECT v FROM settings WHERE k='global'").first();
+  const a = await env.DB.prepare("SELECT v FROM settings WHERE k='access'").first();
+  out.settings = g ? JSON.parse(g.v) : {};
+  out.access = a ? JSON.parse(a.v) : null;
+  return out;
+}
+async function takeSnapshot(env, now){
+  await ensureSnapshots(env);
+  const state = await collectState(env);
+  await env.DB.prepare("INSERT OR REPLACE INTO snapshots (ts,data) VALUES (?,?)")
+    .bind(now, JSON.stringify(state)).run();
+  await env.DB.prepare("DELETE FROM snapshots WHERE ts NOT IN (SELECT ts FROM snapshots ORDER BY ts DESC LIMIT 30)").run();
+  return {ts: now, risks: state.risks.length, milestones: state.milestones.length};
+}
+async function restoreSnapshot(env, ts){
+  const row = await env.DB.prepare("SELECT data FROM snapshots WHERE ts=?").bind(ts).first();
+  if(!row) return null;
+  const s = JSON.parse(row.data);
+  for(const t of ["risks","deleted","milestones"]) await env.DB.prepare("DELETE FROM "+t).run();
+  const stmts = [];
+  for(const r of (s.risks||[])) stmts.push(env.DB.prepare("INSERT OR REPLACE INTO risks (id,committee,l2,updated,pending_new,data) VALUES (?,?,?,?,?,?)").bind(r.id, r.com, r.l2, r.updated||"", r.pendingNew?1:0, JSON.stringify(r)));
+  for(const d of (s.deleted||[])) stmts.push(env.DB.prepare("INSERT OR REPLACE INTO deleted (id,deleted_at,data) VALUES (?,?,?)").bind(d.id, d.deletedAt||"", JSON.stringify(d)));
+  for(const m of (s.milestones||[])) stmts.push(env.DB.prepare("INSERT OR REPLACE INTO milestones (id,owner,soap,updated,data) VALUES (?,?,?,?,?)").bind(m.id, m.owner, m.soap, m.updated||"", JSON.stringify(m)));
+  stmts.push(env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('global',?)").bind(JSON.stringify(s.settings||{})));
+  // NB: the access config is deliberately NOT restored — restoring an old
+  // permission model (or old JWT enforcement values) could lock admins out.
+  if(stmts.length) await env.DB.batch(stmts);
+  return {ts, risks:(s.risks||[]).length, milestones:(s.milestones||[]).length};
+}
+
 async function ensureMilestones(env){
   await env.DB.exec("CREATE TABLE IF NOT EXISTS milestones (id TEXT PRIMARY KEY, owner TEXT, soap TEXT, updated TEXT, data TEXT NOT NULL)");
   const cnt = await env.DB.prepare("SELECT COUNT(*) AS n FROM milestones").first();
@@ -69,8 +113,48 @@ async function nextMilestoneId(env){
   return "M" + String(n+1).padStart(2,"0");
 }
 
+/* ============ SIGN-IN VERIFICATION (JWT hardening) ============
+   When the access config carries teamDomain + aud, every API request must
+   present a valid Cf-Access-Jwt-Assertion signed by Cloudflare — the email is
+   then taken from the verified token, not the header. Unconfigured, we fall
+   back to the header (safe only while the URL stays behind the Access policy). */
+let jwksCache = {domain:null, keys:null, at:0};
+function b64uToBytes(s){
+  s = String(s).replace(/-/g,"+").replace(/_/g,"/");
+  const pad = s.length%4 ? "=".repeat(4-(s.length%4)) : "";
+  const bin = atob(s+pad);
+  const u = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+  return u;
+}
+function b64uJson(s){ return JSON.parse(new TextDecoder().decode(b64uToBytes(s))); }
+async function verifyAccessJWT(token, teamDomain, aud){
+  try{
+    const parts = String(token||"").split(".");
+    if(parts.length!==3) return {error:"no or malformed token"};
+    const header = b64uJson(parts[0]), payload = b64uJson(parts[1]);
+    const iss = "https://"+teamDomain+".cloudflareaccess.com";
+    if(payload.iss !== iss) return {error:"wrong issuer"};
+    const audOk = Array.isArray(payload.aud) ? payload.aud.includes(aud) : payload.aud===aud;
+    if(!audOk) return {error:"wrong audience"};
+    if(!payload.exp || payload.exp*1000 < Date.now()) return {error:"token expired"};
+    if(jwksCache.domain!==teamDomain || !jwksCache.keys || Date.now()-jwksCache.at > 3600*1000){
+      const res = await fetch(iss+"/cdn-cgi/access/certs");
+      if(!res.ok) return {error:"key service unavailable"};
+      jwksCache = {domain:teamDomain, keys:(await res.json()).keys||[], at:Date.now()};
+    }
+    let jwk = jwksCache.keys.find(k=>k.kid===header.kid);
+    if(!jwk){ jwksCache.at = 0; return {error:"unknown signing key"}; }
+    const key = await crypto.subtle.importKey("jwk", jwk, {name:"RSASSA-PKCS1-v1_5", hash:"SHA-256"}, false, ["verify"]);
+    const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64uToBytes(parts[2]),
+      new TextEncoder().encode(parts[0]+"."+parts[1]));
+    return ok ? {email: String(payload.email||"").toLowerCase()} : {error:"bad signature"};
+  }catch(e){ return {error:"verification failed"}; }
+}
+
 // Cloudflare Access guarantees this header on every request to a protected hostname,
-// overwriting any client-supplied value at the edge, so it is safe to trust here.
+// overwriting any client-supplied value at the edge. Used when JWT enforcement
+// is not yet configured.
 function emailFromRequest(req){
   return req.headers.get("Cf-Access-Authenticated-User-Email")
       || req.headers.get("X-Debug-Email")          // local/dev only; never set in production
@@ -113,12 +197,21 @@ async function handleApi(req, env){
   await ensureInit(env);
   await ensureExtras(env);
   await ensureMilestones(env);
+  await ensureSnapshots(env);
   // Apply the stored access config (or defaults) so every rule below uses it.
   const accessCfg = await loadAccess(env);
   applyAccessConfig(accessCfg);
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/,"");
-  const email = emailFromRequest(req);
+  const jwtEnforced = !!(accessCfg && accessCfg.teamDomain && accessCfg.aud);
+  let email;
+  if(jwtEnforced){
+    const v = await verifyAccessJWT(req.headers.get("Cf-Access-Jwt-Assertion"), accessCfg.teamDomain, accessCfg.aud);
+    if(v.error) return json({error:"Your sign-in could not be verified ("+v.error+") — reload the page to sign in again."}, 401);
+    email = v.email;
+  } else {
+    email = emailFromRequest(req);
+  }
   const realRole = roleFor(email);
   // "View as": admins may preview another user's read view. Honoured ONLY on
   // GET /api/state — every write route keeps the real identity.
@@ -153,6 +246,9 @@ async function handleApi(req, env){
       people: peopleFromConfig(accessCfg),                 // staff directory for dropdowns/emails
       catOwner: {...CAT_OWNER},                            // effective area ownership
       access: isAdmin(realRole) ? (accessCfg || null) : undefined,
+      security: {jwtEnforced},
+      seededAt: (await env.DB.prepare("SELECT v FROM settings WHERE k='seeded_at'").first() || {}).v || null,
+      lastSnapshot: (await env.DB.prepare("SELECT MAX(ts) AS t FROM snapshots").first() || {}).t || null,
       me: {email, role, admin: isAdmin(role), realRole, realAdmin: isAdmin(realRole), viewAs}
     });
   }
@@ -249,6 +345,30 @@ async function handleApi(req, env){
     return json({ok:true, deleted:true});
   }
 
+  // snapshots — admins only
+  if(path==="/api/snapshots" && req.method==="GET"){
+    if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    const rows = await env.DB.prepare("SELECT ts, LENGTH(data) AS bytes FROM snapshots ORDER BY ts DESC").all();
+    return json({ok:true, snapshots:(rows.results||[])});
+  }
+  if(path==="/api/snapshot" && req.method==="POST"){
+    if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    return json({ok:true, snapshot: await takeSnapshot(env, now)});
+  }
+  if((m = path.match(/^\/api\/snapshot\/([^/]+)$/)) && req.method==="GET"){
+    if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    const row = await env.DB.prepare("SELECT data FROM snapshots WHERE ts=?").bind(decodeURIComponent(m[1])).first();
+    if(!row) return json({error:"Not found"}, 404);
+    return new Response(row.data, {headers:{"content-type":"application/json","cache-control":"no-store"}});
+  }
+  if((m = path.match(/^\/api\/snapshot\/([^/]+)\/restore$/)) && req.method==="POST"){
+    if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    await takeSnapshot(env, now);   // safety snapshot of the current state first
+    const res = await restoreSnapshot(env, decodeURIComponent(m[1]));
+    if(!res) return json({error:"Snapshot not found"}, 404);
+    return json({ok:true, restored:res});
+  }
+
   if(path==="/api/settings" && req.method==="PUT"){
     if(!isAdmin(role)) return json({error:"Admins only"}, 403);
     const s = body.settings || {}; s.updated = now;
@@ -262,6 +382,15 @@ async function handleApi(req, env){
     const cfg = body.access || {};
     const err = validateAccessConfig(cfg, realRole);
     if(err) return json({error:err}, 400);
+    // Lockout guard for JWT enforcement: before enabling (or changing) it, the
+    // CURRENT request's token must verify against the NEW values — otherwise
+    // the admin saving this would lock everyone out, including themselves.
+    if(cfg.teamDomain && cfg.aud){
+      cfg.teamDomain = String(cfg.teamDomain).trim().replace(/^https?:\/\//,"").replace(/\.cloudflareaccess\.com.*$/,"");
+      cfg.aud = String(cfg.aud).trim();
+      const v = await verifyAccessJWT(req.headers.get("Cf-Access-Jwt-Assertion"), cfg.teamDomain, cfg.aud);
+      if(v.error) return json({error:"Refusing to enable sign-in verification: your own current sign-in does not verify against those values ("+v.error+"). Double-check the team domain and the Application Audience (AUD) tag."}, 400);
+    } else { delete cfg.teamDomain; delete cfg.aud; }
     cfg.updated = now; cfg.updatedBy = realRole;
     await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('access',?)").bind(JSON.stringify(cfg)).run();
     return json({ok:true, access:cfg});
@@ -271,6 +400,11 @@ async function handleApi(req, env){
 }
 
 export default {
+  // Daily backup (03:00 UTC cron in wrangler.jsonc): snapshot the whole state.
+  async scheduled(event, env, ctx){
+    await ensureInit(env); await ensureExtras(env); await ensureMilestones(env);
+    await takeSnapshot(env, new Date().toISOString());
+  },
   async fetch(req, env){
     const url = new URL(req.url);
     if(url.pathname.startsWith("/api/")){

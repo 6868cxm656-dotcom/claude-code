@@ -23,13 +23,13 @@ smart, busy and non-technical. Every design choice follows from that.
 |---|---|---|
 | Live app | Cloudflare Worker `tcf-risk-register` | `https://tcf-risk-register.jim-riddiford.workers.dev` |
 | Deploys from | branch **`db-staging`**, repo root, `npx wrangler deploy` | push = deploy, ~60s. Root `wrangler.jsonc` is the config the build uses |
-| Database | Cloudflare D1 `tcf-risk-register` (id `5694510a…`) | SQLite; tables `risks`, `deleted`, `milestones`, `settings` |
-| Auth | Cloudflare Access, policy: emails ending `@churchillfellowship.org` | one-time PIN; session length set in Zero Trust |
-| Server code | `db-app/worker.js` (~280 lines) | routing + D1 I/O only |
+| Database | Cloudflare D1 `tcf-risk-register` (id `5694510a…`) | SQLite; tables `risks`, `deleted`, `milestones`, `settings`, `snapshots` |
+| Auth | Cloudflare Access, policy: emails ending `@churchillfellowship.org` | one-time PIN; session length set in Zero Trust; optional JWT verification (§6) |
+| Server code | `db-app/worker.js` (~420 lines) | routing + D1 I/O + JWT verification + snapshots |
 | Business rules | `db-app/logic.mjs` (~200 lines) | **pure functions, no I/O** — this is the file that matters |
 | Front-end | `db-app/public/index.html` (~2,300 lines, one file, no build step) | find sections by the `/* ============ NAME ============ */` banners |
 | Seed data | `db-app/seed.mjs` (generated; single source of truth for baselines) | |
-| Tests | `db-app/tests/` — `cd db-app/tests && npm i && npm test` | 85 end-to-end checks, jsdom front-end vs real worker vs mock D1 |
+| Tests | `db-app/tests/` — `cd db-app/tests && npm i && npm test` | 119 end-to-end checks, jsdom front-end vs real worker vs mock D1 |
 | Offline backup copy | `risk-taxonomy/tcf-risk-register.html` on branch `claude/risk-taxonomy-v1alvk` | read-only viewer; sync it after front-end changes (see §5) |
 | Plans & history | `MISSION_CONTROL_PLAN.md` (here), `risk-taxonomy/*.md` (other branch) | the plan docs record *why*, commit messages record *what* |
 | Dead branches | `cloudflare-pages`, `gh-pages` | pre-database static era; nothing deploys from them |
@@ -80,13 +80,22 @@ smart, busy and non-technical. Every design choice follows from that.
 - **Optimistic concurrency**: writes carry `baseUpdated`; a mismatch is a 409
   and a reload, never a silent overwrite. New-risk creation uses plain INSERT
   with collision retry — don't "simplify" it back to an upsert.
+- **A restore never touches the access config.** Snapshots *store* it (so a
+  downloaded backup is complete) but `restoreSnapshot` deliberately skips it —
+  restoring an old permission model or stale JWT-enforcement values could lock
+  every admin out. The restore route also takes a safety snapshot first, so a
+  restore is itself undoable. Keep both properties.
+- **You cannot lock yourself out of JWT enforcement.** `PUT /api/access`
+  verifies the *saving admin's own current token* against the new
+  teamDomain/AUD values before persisting them. Never bypass that check —
+  a typo in the AUD tag would otherwise 401 the whole organisation.
 
 ## 5. How to make a change (the loop that never failed me)
 
 ```
 1. edit db-app/{worker.js,logic.mjs,public/index.html}
 2. node --check on each changed file (extract index.html's <script> first)
-3. cd db-app/tests && npm test          # 85 checks; add yours FIRST
+3. cd db-app/tests && npm test          # 119 checks; add yours FIRST
 4. bump APP_VERSION in index.html       # it shows in the footer — cache sanity
 5. git push origin db-staging           # that IS the deploy
 6. hard-refresh, check footer version, click the thing you changed
@@ -103,17 +112,25 @@ the suite is why a 2,300-line single file has stayed changeable.
 
 ## 6. Where the bodies are buried (honest gotchas)
 
-- **The Access-header trust.** Permissions rely on
-  `Cf-Access-Authenticated-User-Email`, which Cloudflare injects at the edge.
-  This is safe **only while the workers.dev URL sits behind the Access
-  policy**. If anyone removes that policy the API is open. The hardening step
-  (verify the `Cf-Access-Jwt-Assertion` JWT against Cloudflare's public keys)
-  is designed but unbuilt — do it before any expansion beyond staff.
-- **Self-seeding DB.** On an *empty* database the worker recreates schema and
-  baseline (`ensureInit`/`ensureExtras`/`ensureMilestones`, marker-guarded).
-  Convenient, but it means a wiped D1 silently resurrects June 2026 data —
-  if the DB ever looks "reset", that's what happened; restore from a JSON
-  export (in-app **Export all** is the only backup: schedule one monthly).
+- **The Access-header trust — now fixable with one setting.** Out of the box,
+  permissions rely on `Cf-Access-Authenticated-User-Email`, which Cloudflare
+  injects at the edge — safe **only while the workers.dev URL sits behind the
+  Access policy**. The hardening is built: enter the Zero Trust team domain +
+  the application's AUD tag under **Access → Sign-in verification** and every
+  request's `Cf-Access-Jwt-Assertion` JWT is cryptographically verified
+  (RS256 against Cloudflare's JWKS, cached 1h), with identity taken from the
+  token, not the header. Enforcement is **off until those two values are
+  saved** — turn it on before any expansion beyond staff. The save is
+  self-guarding (see §4), so you cannot enable values that don't verify.
+- **Self-seeding DB — now tripwired and backed up.** On an *empty* database
+  the worker recreates schema and baseline (`ensureInit` etc., marker-guarded),
+  so a wiped D1 silently resurrects June 2026 data. Two defences now exist:
+  a daily 03:00 UTC cron snapshot (last 30 kept in the `snapshots` table, with
+  take/download/restore under **Access → Backups**), and a `seeded_at` marker —
+  if it is ever newer than the latest snapshot, admins get a red banner telling
+  them to restore. Caveat: snapshots live in the *same* D1 database, so a full
+  database wipe takes them too — still download a JSON backup monthly and
+  keep it outside Cloudflare.
 - **The D1 mock** (`tests/d1mock.mjs`) is regex-based and minimal. It has
   bitten us twice (hardcoded settings key; missing milestone tables). When a
   test passes but production doesn't, suspect the mock first.
@@ -149,8 +166,10 @@ readings, ~1 day, wanted before the 1 Oct SOAP launch) → **Phase 4** Budget
 (import pipeline; blocked on the finance-feed decision) → **Phase 5** Projects
 (a grouping over milestones+risks, challenge whether it's needed) → **Phase 6**
 the integrated committee pack (risks + milestones + budget + changes in one
-printable document — the deliverable that justifies the suite). Plus the JWT
-hardening (§6) and, someday, real email.
+printable document — the deliverable that justifies the suite). The JWT
+hardening and backups are built (§6) — the one manual step left is Jim
+entering the team domain + AUD tag to switch verification on. Someday, real
+email.
 
 ## 9. A closing word
 

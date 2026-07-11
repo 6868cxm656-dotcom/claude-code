@@ -11,8 +11,10 @@ and trust the code over both.*
 A small, sturdy internal suite for The Churchill Fellowship: **Home** (their
 3-year Strategy on a Page, rendered live), **Risk** (a full risk register with
 appetite, QA-gated changes, hidden risks, committee packs), **Milestones**
-(the year's plan, RAG-tracked, timeline view), an **auto-generated priorities
-engine**, and an **Access** admin module. One URL, one login, one database.
+(the year's plan, RAG-tracked, timeline view), **Budget** (the budget
+dashboard, import-driven, with admin-hideable panels), an **auto-generated
+priorities engine**, and an **Access** admin module. One URL, one login, one
+database.
 
 It is used by five SLT members and, increasingly, wider staff. The users are
 smart, busy and non-technical. Every design choice follows from that.
@@ -25,11 +27,12 @@ smart, busy and non-technical. Every design choice follows from that.
 | Deploys from | branch **`db-staging`**, repo root, `npx wrangler deploy` | push = deploy, ~60s. Root `wrangler.jsonc` is the config the build uses |
 | Database | Cloudflare D1 `tcf-risk-register` (id `5694510a…`) | SQLite; tables `risks`, `deleted`, `milestones`, `settings`, `snapshots` |
 | Auth | Cloudflare Access, policy: emails ending `@churchillfellowship.org` | one-time PIN; session length set in Zero Trust; optional JWT verification (§6) |
-| Server code | `db-app/worker.js` (~420 lines) | routing + D1 I/O + JWT verification + snapshots |
+| Server code | `db-app/worker.js` (~500 lines) | routing + D1 I/O + JWT verification + snapshots + budget panels |
+| Budget data pipeline | `budget-dashboard/` on branch `claude/budget-dashboard-design-h2ngl8` | `build.py` turns the budget workbook + Xero variance report into `dashboard.html`; import that file in-app |
 | Business rules | `db-app/logic.mjs` (~200 lines) | **pure functions, no I/O** — this is the file that matters |
 | Front-end | `db-app/public/index.html` (~2,300 lines, one file, no build step) | find sections by the `/* ============ NAME ============ */` banners |
 | Seed data | `db-app/seed.mjs` (generated; single source of truth for baselines) | |
-| Tests | `db-app/tests/` — `cd db-app/tests && npm i && npm test` | 119 end-to-end checks, jsdom front-end vs real worker vs mock D1 |
+| Tests | `db-app/tests/` — `cd db-app/tests && npm i && npm test` | 150 end-to-end checks, jsdom front-end vs real worker vs mock D1 |
 | Offline backup copy | `risk-taxonomy/tcf-risk-register.html` on branch `claude/risk-taxonomy-v1alvk` | read-only viewer; sync it after front-end changes (see §5) |
 | Plans & history | `MISSION_CONTROL_PLAN.md` (here), `risk-taxonomy/*.md` (other branch) | the plan docs record *why*, commit messages record *what* |
 | Dead branches | `cloudflare-pages`, `gh-pages` | pre-database static era; nothing deploys from them |
@@ -89,13 +92,22 @@ smart, busy and non-technical. Every design choice follows from that.
   verifies the *saving admin's own current token* against the new
   teamDomain/AUD values before persisting them. Never bypass that check —
   a typo in the AUD tag would otherwise 401 the whole organisation.
+- **Hidden budget panels never leave the server** for non-admins — same
+  covenant as hidden risks. This works because the import precomputes five
+  *independent* per-panel payloads (`buildBudgetPanels` in logic.mjs); the
+  worker sends only the panels a caller may see. Do not "optimise" the module
+  to ship raw budget lines and filter client-side — that turns a hide into
+  decoration.
+- **Budget figures live ONLY in D1.** The repository is public: never commit
+  a built dashboard, a budget workbook, or a seed containing real financial
+  data. The module ships empty and is fed by the in-app admin import.
 
 ## 5. How to make a change (the loop that never failed me)
 
 ```
 1. edit db-app/{worker.js,logic.mjs,public/index.html}
 2. node --check on each changed file (extract index.html's <script> first)
-3. cd db-app/tests && npm test          # 119 checks; add yours FIRST
+3. cd db-app/tests && npm test          # 150 checks; add yours FIRST
 4. bump APP_VERSION in index.html       # it shows in the footer — cache sanity
 5. git push origin db-staging           # that IS the deploy
 6. hard-refresh, check footer version, click the thing you changed
@@ -163,7 +175,10 @@ the suite is why a 2,300-line single file has stayed changeable.
 
 From `MISSION_CONTROL_PLAN.md`: **Phase 3** strategy measures (baselines +
 readings, ~1 day, wanted before the 1 Oct SOAP launch) → **Phase 4** Budget
-(import pipeline; blocked on the finance-feed decision) → **Phase 5** Projects
+(*first slice delivered:* the dashboard is a module fed by an admin file
+import with per-panel hiding; still to come is the routine monthly pipeline —
+finance exports from Xero, upload replaces the month, exception commentary
+saved to the DB instead of localStorage) → **Phase 5** Projects
 (a grouping over milestones+risks, challenge whether it's needed) → **Phase 6**
 the integrated committee pack (risks + milestones + budget + changes in one
 printable document — the deliverable that justifies the suite). The JWT

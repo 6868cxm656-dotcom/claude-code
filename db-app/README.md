@@ -5,7 +5,10 @@
 
 Now a module suite: **Home** (the Strategy on a Page, live), **Risk** (the
 register), **Milestones** (year-1 plan, SOAP-tagged, owner updates live with
-no QA gate), plus committee packs and approvals. One Worker, one D1, one login.
+no QA gate), **Budget** (dashboard imported in-app from the budget-dashboard
+tools; admins can hide individual panels, and hidden panels are stripped
+server-side for everyone else), plus committee packs and approvals. One
+Worker, one D1, one login.
 
 This folder is the database-backed version of the register, built per
 `risk-taxonomy/SHARED_DB_PLAN.md`. It is **live**: the Cloudflare Worker
@@ -53,6 +56,10 @@ Cloudflare D1 database, behind staff-only Cloudflare Access.
 - `DELETE /api/risk/:id` — admin live; owner → deletion proposal
 - `POST /api/proposal/:id/approve` · `/reject` — admins only
 - `PUT /api/settings` — admins only
+- `GET /api/budget` — per-panel payloads; hidden panels stripped for non-admins
+- `POST /api/budget` · `DELETE /api/budget` — admins only (import / remove data)
+- `PUT /api/panels` — admins only (hide/unhide budget panels for everyone else)
+- `GET /api/snapshots` · `POST /api/snapshot` · `/api/snapshot/:ts` (+`/restore`) — admins only (backups)
 
 ## Tests
 `db-app/tests/e2e.mjs` runs the real front-end (jsdom) against the real Worker

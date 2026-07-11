@@ -202,3 +202,94 @@ export function peopleFromConfig(cfg){
   const c = (cfg && Array.isArray(cfg.users) && cfg.users.length) ? cfg : defaultAccessConfig();
   return c.users.map(u=>({name:u.name, group:u.group, email:u.email}));
 }
+
+/* ============ BUDGET MODULE + PANEL VISIBILITY ============
+   The budget dashboard's five panels are precomputed at import time into
+   independent payloads, so hiding a panel means its data NEVER leaves the
+   server for non-admins (same covenant as hidden risks). Raw import shape
+   (from budget-dashboard/build.py or the built dashboard HTML):
+     data:     [{dept, cls, act, typ, code, name, b2526, rf2526, a2526,
+                 b2627, cont, desc, phase[12]}]
+     variance: [{section, group, code, name, fy_budget, fy_rf, ytd_rf,
+                 ytd_act, var, var_pct}]   (optional)
+     map:      {structure:{line:{activity, codes[]}}, code_to_line:{}} (optional) */
+export const KNOWN_PANELS = ["budget.org","budget.variance","budget.holder","budget.structure","budget.health"];
+export const PANEL_LABELS = {
+  "budget.org":"Organisation overview", "budget.variance":"Monthly variance",
+  "budget.holder":"Budget holder view", "budget.structure":"Proposed structure",
+  "budget.health":"Data health"
+};
+export function validatePanels(cfg){
+  if(!cfg || !Array.isArray(cfg.hidden)) return "Panel config needs a hidden[] list";
+  for(const p of cfg.hidden) if(!KNOWN_PANELS.includes(p)) return `Unknown panel "${p}"`;
+  return null;
+}
+const rnd2 = v => Math.round((v||0)*100)/100;
+export function buildBudgetPanels(raw){
+  const data = Array.isArray(raw.data) ? raw.data : [];
+  const variance = Array.isArray(raw.variance) ? raw.variance : [];
+  const map = (raw.map && raw.map.structure) ? raw.map : {structure:{}, code_to_line:{}};
+  if(!data.length) throw new Error("No budget lines found in the import");
+  for(const r of data) if(!r || typeof r.dept!=="string" || !Array.isArray(r.phase))
+    throw new Error("Budget lines are not in the expected format (dept/phase missing)");
+
+  const sum = (arr,f)=>arr.reduce((a,r)=>a+(f(r)||0),0);
+  const agg = (rows,key)=>{
+    const m = new Map();
+    for(const r of rows){
+      const k = key(r);
+      if(!m.has(k)) m.set(k,{b2627:0, rf2526:0, a2526:0, cont:0, n:0});
+      const o = m.get(k);
+      o.b2627+=r.b2627||0; o.rf2526+=r.rf2526||0; o.a2526+=r.a2526||0; o.cont+=r.cont||0; o.n++;
+    }
+    return m;
+  };
+
+  // org — department/activity aggregates only, no line-level detail
+  const byDept = agg(data, r=>r.dept), byAct = agg(data, r=>r.act);
+  const org = {
+    totals: {b2627:rnd2(sum(data,r=>r.b2627)), rf2526:rnd2(sum(data,r=>r.rf2526)),
+             a2526:rnd2(sum(data,r=>r.a2526)), lines:data.length,
+             active:data.filter(r=>(r.b2627||0)!==0).length, depts:byDept.size},
+    depts: [...byDept].map(([d,o])=>({dept:d, b2627:rnd2(o.b2627), rf2526:rnd2(o.rf2526), a2526:rnd2(o.a2526), n:o.n})),
+    acts:  [...byAct].map(([a,o])=>({act:a, b2627:rnd2(o.b2627)})).filter(x=>x.b2627>0)
+  };
+
+  // holder — full line-level rows (descriptions/justifications included)
+  const holder = {rows: data, depts: [...new Set(data.map(r=>r.dept))].sort()};
+
+  // health — the upload checks, precomputed to the rows each list shows
+  const hasPhase = r => r.phase.some(p=>p!==0);
+  const phasedSum = r => rnd2(r.phase.reduce((a,b)=>a+(b||0),0));
+  const lite = r => ({dept:r.dept, code:r.code, name:r.name, b2627:r.b2627});
+  const dead = data.filter(r=>!(r.b2627||0) && !(r.a2526||0));
+  const tiny = data.filter(r=>r.b2627 && Math.abs(r.b2627)<=5000);
+  const noPhase = data.filter(r=>(r.b2627||0)!==0 && !hasPhase(r));
+  const badPhase = data.filter(r=>hasPhase(r) && r.b2627!=null && Math.abs(phasedSum(r)-r.b2627)>1);
+  const health = {
+    counts: {dead:dead.length, tiny:tiny.length, noPhase:noPhase.length, badPhase:badPhase.length,
+             total:data.length, over5k:data.length-dead.length-tiny.length},
+    tinyTotal: rnd2(sum(tiny,r=>r.b2627)), totalB27: org.totals.b2627,
+    tinyRows: tiny.map(lite).sort((a,b)=>a.b2627-b.b2627),
+    badPhaseRows: badPhase.slice(0,20).map(r=>({...lite(r), phased:phasedSum(r)})),
+    deadRows: dead.slice(0,20).map(lite)
+  };
+
+  // variance — the Xero monthly report rows + the mapping for the proposed-structure toggle
+  const varPanel = {rows: variance, map};
+
+  // structure — fully precomputed per reporting line (25/26 FY RF + 26/27 budget)
+  const vby = {}; for(const r of variance) vby[r.code] = r;
+  const b27by = {}; for(const r of data) if(r.code!=null) b27by[r.code] = rnd2((b27by[r.code]||0)+(r.b2627||0));
+  const structure = {
+    codes: Object.keys(map.code_to_line||{}).length,
+    lines: Object.entries(map.structure).map(([name,s])=>({
+      name, activity:s.activity, codes:s.codes,
+      fyrf: rnd2(s.codes.reduce((t,c)=>t+((vby[c]&&vby[c].fy_rf)||0),0)),
+      b27:  rnd2(s.codes.reduce((t,c)=>t+(b27by[c]||0),0))
+    }))
+  };
+
+  return {"budget.org":org, "budget.holder":holder, "budget.health":health,
+          "budget.variance":varPanel, "budget.structure":structure};
+}

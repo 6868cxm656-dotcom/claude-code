@@ -34,6 +34,7 @@ export function makeDB(){
       const lit = sql.match(/VALUES \('\w+','([^']*)'\)/);
       settings.set(key, args.length ? args[0] : (lit ? lit[1] : ''));
       return {}; }
+    if(/^DELETE FROM settings WHERE k='(\w+)'/i.test(sql)){ settings.delete(sql.match(/k='(\w+)'/)[1]); return {}; }
     return {};
   }
   function first(sql,args){

@@ -4,7 +4,8 @@
 import {
   roleFor, isAdmin, canEditArea, COMMITTEES, EMAIL_TO_PERSON, CAT_OWNER,
   decideSave, decideDelete, applyApprove, applyReject, applyFlag, applyClearFlag,
-  decideMilestoneSave, applyAccessConfig, validateAccessConfig, peopleFromConfig
+  decideMilestoneSave, applyAccessConfig, validateAccessConfig, peopleFromConfig,
+  validatePanels, buildBudgetPanels
 } from "./logic.mjs";
 import { SEED_RISKS, SEED_SETTINGS, SEED_MILESTONES } from "./seed.mjs";
 
@@ -60,8 +61,10 @@ async function collectState(env){
   }
   const g = await env.DB.prepare("SELECT v FROM settings WHERE k='global'").first();
   const a = await env.DB.prepare("SELECT v FROM settings WHERE k='access'").first();
+  const b = await env.DB.prepare("SELECT v FROM settings WHERE k='budget'").first();
   out.settings = g ? JSON.parse(g.v) : {};
   out.access = a ? JSON.parse(a.v) : null;
+  out.budget = b ? JSON.parse(b.v) : null;
   return out;
 }
 async function takeSnapshot(env, now){
@@ -82,8 +85,12 @@ async function restoreSnapshot(env, ts){
   for(const d of (s.deleted||[])) stmts.push(env.DB.prepare("INSERT OR REPLACE INTO deleted (id,deleted_at,data) VALUES (?,?,?)").bind(d.id, d.deletedAt||"", JSON.stringify(d)));
   for(const m of (s.milestones||[])) stmts.push(env.DB.prepare("INSERT OR REPLACE INTO milestones (id,owner,soap,updated,data) VALUES (?,?,?,?,?)").bind(m.id, m.owner, m.soap, m.updated||"", JSON.stringify(m)));
   stmts.push(env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('global',?)").bind(JSON.stringify(s.settings||{})));
+  if(s.budget!=null) stmts.push(env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('budget',?)").bind(JSON.stringify(s.budget)));
+  else stmts.push(env.DB.prepare("DELETE FROM settings WHERE k='budget'"));
   // NB: the access config is deliberately NOT restored — restoring an old
   // permission model (or old JWT enforcement values) could lock admins out.
+  // Panel visibility ('panels') is not restored either: restoring must never
+  // silently resurface a panel an admin has since hidden.
   if(stmts.length) await env.DB.batch(stmts);
   return {ts, risks:(s.risks||[]).length, milestones:(s.milestones||[]).length};
 }
@@ -192,6 +199,14 @@ async function loadAccess(env){
   const row = await env.DB.prepare("SELECT v FROM settings WHERE k='access'").first();
   return row ? JSON.parse(row.v) : null;
 }
+async function loadBudget(env){
+  const row = await env.DB.prepare("SELECT v FROM settings WHERE k='budget'").first();
+  return row ? JSON.parse(row.v) : null;
+}
+async function loadPanels(env){
+  const row = await env.DB.prepare("SELECT v FROM settings WHERE k='panels'").first();
+  return row ? JSON.parse(row.v) : {hidden:[]};
+}
 
 async function handleApi(req, env){
   await ensureInit(env);
@@ -214,9 +229,10 @@ async function handleApi(req, env){
   }
   const realRole = roleFor(email);
   // "View as": admins may preview another user's read view. Honoured ONLY on
-  // GET /api/state — every write route keeps the real identity.
+  // the read-only GETs (/api/state, /api/budget) — every write route keeps
+  // the real identity.
   let role = realRole, viewAs = null;
-  if(path==="/api/state" && req.method==="GET" && isAdmin(realRole)){
+  if((path==="/api/state" || path==="/api/budget") && req.method==="GET" && isAdmin(realRole)){
     const va = url.searchParams.get("viewAs");
     if(va){
       const people = peopleFromConfig(accessCfg);
@@ -238,6 +254,10 @@ async function handleApi(req, env){
     let riskRows = (rs.results||[]).map(x=>JSON.parse(x.data));
     let delRows  = (ds.results||[]).map(x=>JSON.parse(x.data));
     if(!isAdmin(role)){ riskRows = riskRows.filter(r=>!r.hidden); delRows = delRows.filter(r=>!r.hidden); }
+    const budgetCfg = await loadBudget(env);
+    const panelsCfg = await loadPanels(env);
+    const visiblePanels = budgetCfg ? Object.keys(budgetCfg.panels||{})
+      .filter(p => isAdmin(role) || !(panelsCfg.hidden||[]).includes(p)).length : 0;
     return json({
       risks: riskRows,
       deleted: delRows,
@@ -246,11 +266,47 @@ async function handleApi(req, env){
       people: peopleFromConfig(accessCfg),                 // staff directory for dropdowns/emails
       catOwner: {...CAT_OWNER},                            // effective area ownership
       access: isAdmin(realRole) ? (accessCfg || null) : undefined,
+      budget: {present: !!budgetCfg, visible: visiblePanels},   // payload itself comes from GET /api/budget
+      panels: isAdmin(realRole) ? panelsCfg : undefined,
       security: {jwtEnforced},
       seededAt: (await env.DB.prepare("SELECT v FROM settings WHERE k='seeded_at'").first() || {}).v || null,
       lastSnapshot: (await env.DB.prepare("SELECT MAX(ts) AS t FROM snapshots").first() || {}).t || null,
       me: {email, role, admin: isAdmin(role), realRole, realAdmin: isAdmin(realRole), viewAs}
     });
+  }
+
+  // Budget module payload, fetched when the module opens (kept out of /api/state
+  // to keep the 45s poll light). Hidden panels are stripped server-side for
+  // non-admins — like hidden risks, their data never leaves the server.
+  if(path==="/api/budget" && req.method==="GET"){
+    const budgetCfg = await loadBudget(env);
+    const panelsCfg = await loadPanels(env);
+    if(!budgetCfg) return json({present:false, panels:{}, meta:null,
+      hidden: isAdmin(role) ? (panelsCfg.hidden||[]) : undefined});
+    const out = {};
+    for(const [p, payload] of Object.entries(budgetCfg.panels||{}))
+      if(isAdmin(role) || !(panelsCfg.hidden||[]).includes(p)) out[p] = payload;
+    return json({present:true, panels:out, meta:budgetCfg.meta||null,
+      hidden: isAdmin(role) ? (panelsCfg.hidden||[]) : undefined});
+  }
+  // Import (replace) the budget dataset — admins only. The raw payload is
+  // transformed into five independent per-panel payloads at import time.
+  if(path==="/api/budget" && req.method==="POST"){
+    if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    const raw = body.budget || {};
+    let panels;
+    try{ panels = buildBudgetPanels(raw); }
+    catch(e){ return json({error:"Import failed: "+((e&&e.message)||e)+". Expected the built dashboard HTML or its JSON payloads."}, 400); }
+    const meta = {imported:now, importedBy:realRole, label:String(raw.label||"").slice(0,120),
+      lines:(raw.data||[]).length, varianceLines:(raw.variance||[]).length};
+    await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('budget',?)")
+      .bind(JSON.stringify({meta, panels})).run();
+    return json({ok:true, meta});
+  }
+  if(path==="/api/budget" && req.method==="DELETE"){
+    if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    await env.DB.prepare("DELETE FROM settings WHERE k='budget'").run();
+    return json({ok:true, deleted:true});
   }
 
   if(role==="viewer") return json({error:"Read-only access"}, 403);
@@ -374,6 +430,19 @@ async function handleApi(req, env){
     const s = body.settings || {}; s.updated = now;
     await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('global',?)").bind(JSON.stringify(s)).run();
     return json({ok:true, settings:s});
+  }
+
+  // panel visibility — admins only. Hidden panels are stripped server-side
+  // for everyone except admins (Jim/Julia see everything, with a badge).
+  if(path==="/api/panels" && req.method==="PUT"){
+    if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    const cfg = {hidden: (body.panels && body.panels.hidden) || []};
+    const err = validatePanels(cfg);
+    if(err) return json({error:err}, 400);
+    cfg.updated = now; cfg.updatedBy = realRole;
+    await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('panels',?)")
+      .bind(JSON.stringify(cfg)).run();
+    return json({ok:true, panels:cfg});
   }
 
   // access config — admins only, with lockout guards

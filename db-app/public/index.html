@@ -229,6 +229,31 @@
   .viewtoggle button{background:#f1edec;color:var(--muted);font-size:12.5px;padding:6px 12px}
   .viewtoggle button.active{background:var(--red);color:#fff}
 
+  /* budget module */
+  #view-budget td.n,#view-budget th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  #view-budget svg text{font:11px system-ui,sans-serif;fill:var(--muted)}
+  #view-budget svg .val{fill:var(--ink);font-weight:600}
+  #view-budget svg .cat{fill:var(--ink)}
+  .bchip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap}
+  .bchip.good{background:#e6f4e6;color:#2E7D32}
+  .bchip.warn{background:#fdf3d5;color:#7a5d00}
+  .bchip.serious{background:#fde8dd;color:#b34700}
+  .bchip.critical{background:#fdecea;color:#C62828}
+  .bchip.under{background:#e3edf9;color:#1a5fb4}
+  .bud-callout{border-left:3px solid var(--high);background:#fdf3d5;border-radius:0 8px 8px 0;padding:10px 14px;font-size:12.5px;margin:0 0 14px}
+  .bud-callout.block{border-left-color:var(--sev);background:#fdecea}
+  #view-budget .acthead td{font-weight:800;background:#f6f3f2}
+  .bud-desc{color:var(--muted);font-size:12px;white-space:pre-line;max-width:64ch}
+  .bud-fold{color:var(--muted);font-size:11.5px;font-weight:400}
+  .bud-showmore{background:none;border:none;color:var(--red-dark);font:700 12px inherit;cursor:pointer;padding:6px 0}
+  .bud-linehead{cursor:pointer}
+  .bud-comment{width:100%;min-height:32px;margin-top:6px;font:12.5px inherit;border:1px solid var(--line);border-radius:8px;padding:6px 9px;resize:vertical;background:#faf8f7}
+  .bud-adminbar{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin:0 0 8px}
+  #budTip{position:fixed;display:none;z-index:99;background:var(--ink);color:#fff;border-radius:9px;padding:8px 12px;font-size:12px;max-width:280px;box-shadow:0 8px 30px rgba(0,0,0,.35);pointer-events:none}
+  #budTip .t{font-weight:800;display:block;margin-bottom:2px}
+  #budTip .r{display:flex;justify-content:space-between;gap:14px}
+  #budTip .r b{font-variant-numeric:tabular-nums}
+
   /* change report */
   .delta{font-weight:800;font-size:12px;white-space:nowrap}
   .delta.worse{color:var(--sev)}.delta.better{color:var(--low)}.delta.same{color:var(--muted);font-weight:600}
@@ -328,6 +353,7 @@ window.onerror = function(msg, src, line){
     <button id="mod-home" class="active" onclick="showModule('home')">⌂ Home</button>
     <button id="mod-risk" onclick="showModule('risk')">Risk</button>
     <button id="mod-milestones" onclick="showModule('milestones')">Milestones</button>
+    <button id="mod-budget" style="display:none" onclick="showModule('budget')">Budget</button>
     <button id="mod-pack" onclick="showModule('pack')">Committee pack</button>
     <button id="mod-approvals" onclick="showModule('approvals')">Approvals <span id="apprBadge" class="navbadge" style="display:none">0</span></button>
     <button id="mod-access" style="display:none" onclick="showModule('access')">Access</button>
@@ -386,6 +412,15 @@ window.onerror = function(msg, src, line){
     <div id="msTimeline" style="display:none"></div>
     <div id="tlTip"></div>
     <p class="floor-note">Year-1 milestones are an AI-drafted starting set (marked DRAFT) built from the SOAP, the leadership team's priority tracker and the Portal/Salesforce rebuild decision — owners to confirm, amend or replace. Updates by owners go live immediately (no QA gate).</p>
+  </section>
+
+  <!-- BUDGET -->
+  <section id="view-budget" class="view">
+    <div id="budAdmin" class="no-print"></div>
+    <div class="filters no-print viewtoggle" id="budTabs" style="margin-bottom:10px"></div>
+    <div id="budBody"></div>
+    <div id="budTip"></div>
+    <input type="file" id="budFile" accept=".html,.json" style="display:none" onchange="budFileChosen(this)">
   </section>
 
   <!-- OVERVIEW -->
@@ -811,7 +846,7 @@ const BASELINE_MILESTONES = [{"id":"M01","soap":"A1","owner":"Nikesh","com":"Boa
 /* BASELINE-MS:END */
 
 /* ============ STATE ============ */
-const APP_VERSION = "v2026-07-10c";
+const APP_VERSION = "v2026-07-11a";
 const TODAY = new Date().toISOString().slice(0,10);
 const PEOPLE = ["Julia","Jim","Nikesh","Jacqui","Chris"];
 const ADMINS = ["Jim","Julia"];                       // access-all-areas
@@ -836,6 +871,8 @@ let catOwn = null;                   // effective category ownership
 let accessCfg = null;                // raw access config (admins only)
 let jwtEnforced = false;             // is sign-in (JWT) verification on server-side?
 let seededAt = null, lastSnap = null; // re-seed tripwire inputs from /api/state
+let budget = null;                   // budget module payload from GET /api/budget (admin gets .hidden list)
+let budState = {present:false, visible:0};  // light flags from /api/state (drives the nav button)
 let viewAs = null;                   // admin preview of another user's view
 let saveInFlight = false;
 let sortKey = "score", sortDir = -1;
@@ -934,6 +971,10 @@ function applyMe(me){
     } else vb.style.display = "none";
   }
   const ma = document.getElementById("mod-access"); if(ma) ma.style.display = (me.realAdmin && !me.viewAs) ? "" : "none";
+  // Budget tab: shown when there are panels this user may see, or to admins
+  // (who need it even before any data is imported).
+  const mbud = document.getElementById("mod-budget");
+  if(mbud) mbud.style.display = (budState.visible > 0 || (me.realAdmin && !me.viewAs)) ? "" : "none";
   document.getElementById("exportMineBtn").style.display = (role!=="viewer" && !isAdmin()) ? "" : "none";
   document.getElementById("addBtn").style.display = (role==="viewer") ? "none" : "";
   const mab = document.getElementById("msAddBtn"); if(mab) mab.style.display = (role==="viewer") ? "none" : "";
@@ -957,6 +998,7 @@ async function refreshState(opts){
   if(data.access !== undefined) accessCfg = data.access;
   if(data.security) jwtEnforced = !!data.security.jwtEnforced;
   seededAt = data.seededAt || null; lastSnap = data.lastSnapshot || null;
+  if(data.budget) budState = data.budget;
   if(data.me) applyMe(data.me);
   updateSeedBanner(data.me);
   renderAll();
@@ -1005,8 +1047,10 @@ function adminEmails(){ const as = people ? people.filter(p=>p.group==="admin").
 function viewAsGuard(){ if(viewAs){ toast("View-as is a read-only preview — exit it (top banner) to make changes."); return true; } return false; }
 function setViewAs(v){
   viewAs = v || null;
+  budget = null;   // budget payload is per-identity — refetch under the new view
   if(document.getElementById("view-access").classList.contains("active")) showModule("home");
   refreshState({force:true});
+  if(document.getElementById("view-budget").classList.contains("active")) showModule("budget");
 }
 function canEdit(r){
   if(role==="viewer") return false;
@@ -1132,7 +1176,7 @@ function updateApprBadge(){
 }
 
 /* ============ VIEWS / MODULES ============ */
-const MODULE_VIEWS = {home:["home"], risk:["overview","dashboard","register","taxonomy","changes"], milestones:["milestones"], pack:["pack"], approvals:["approvals"], access:["access"]};
+const MODULE_VIEWS = {home:["home"], risk:["overview","dashboard","register","taxonomy","changes"], milestones:["milestones"], budget:["budget"], pack:["pack"], approvals:["approvals"], access:["access"]};
 function moduleOf(v){ return Object.keys(MODULE_VIEWS).find(m=>MODULE_VIEWS[m].includes(v)) || "home"; }
 function showView(v){
   const mod = moduleOf(v);
@@ -1149,6 +1193,7 @@ function showModule(m){
   if(m==="milestones") renderMilestones();
   if(m==="pack") renderPack();
   if(m==="approvals") renderApprovals();
+  if(m==="budget") openBudget();
   if(m==="access"){ renderAccess(); renderBackups(); }
 }
 
@@ -2254,6 +2299,484 @@ async function deleteMilestone(){
   closeMilestone(); await refreshState({force:true}); toast("Milestone deleted.");
 }
 
+/* ============ BUDGET MODULE ============ */
+/* Ported from the budget-dashboard prototype (branch claude/budget-dashboard-design-h2ngl8).
+   The figures are NEVER embedded in this file or the repository: an admin imports
+   the locally-built dashboard.html (or its JSON payloads) and the worker stores five
+   independent per-panel payloads in the shared database. Panels an admin hides are
+   stripped server-side for everyone else — like hidden risks, the data never leaves
+   the server for non-admins. */
+const BUD_PANELS = [
+  ["budget.org","Organisation overview"],
+  ["budget.variance","Monthly variance"],
+  ["budget.holder","Budget holder view"],
+  ["budget.structure","Proposed structure"],
+  ["budget.health","Data health"]
+];
+const BUD_MONTHS = ["Oct","Nov","Dec","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep"];
+const BUD_YTD_FRAC = 6/12;   // 25/26 YTD budget is straight-lined: the workbook has no 25/26 phasing
+let budTab = "budget.org", budMode = "current", budDept = null;
+
+const bfmt = v => "£" + Math.round(v||0).toLocaleString("en-GB");
+const bfmtK = v => Math.abs(v||0) >= 1e6 ? "£" + (v/1e6).toFixed(2) + "m"
+              : Math.abs(v||0) >= 1e3 ? "£" + Math.round(v/1e3) + "k" : "£" + Math.round(v||0);
+const bpct = v => (v > 0 ? "+" : "") + Math.round(v * 100) + "%";
+const bsum = (arr, f) => arr.reduce((a, r) => a + (f(r) || 0), 0);
+const shortDept = d => String(d).replace(/^\d+\s*-\s*/, "");
+
+// expenditure status: actual vs straight-line YTD budget
+function budStatus(actual, ytdBudget){
+  const diff = (actual||0) - (ytdBudget||0);
+  if(Math.abs(diff) < 1000) return {cls:"good", icon:"✓", label:"On track", v:0};
+  if(!ytdBudget) return {cls:"serious", icon:"▲", label:"Unbudgeted", v:null};
+  const v = diff / Math.abs(ytdBudget);
+  if(v > 0.15) return {cls:"critical", icon:"▲", label:"Overspend " + bpct(v), v};
+  if(v > 0.05) return {cls:"serious", icon:"▲", label:"Overspend " + bpct(v), v};
+  if(v < -0.10) return {cls:"under", icon:"▼", label:"Underspend " + bpct(v), v};
+  return {cls:"good", icon:"✓", label:"On track " + bpct(v), v};
+}
+const bchip = s => `<span class="bchip ${s.cls}"><span aria-hidden="true">${s.icon}</span>${s.label}</span>`;
+
+// favourable/adverse against PHASED ytd reforecast (income: over = good)
+const BUD_INCOME_SECTIONS = ["Charitable Income"];
+const budIsIncome = r => BUD_INCOME_SECTIONS.includes(r.section);
+function budVerdict(r){
+  const diff = (r.ytd_act||0) - (r.ytd_rf||0);
+  const fav = budIsIncome(r) ? diff >= 0 : diff <= 0;
+  const p = r.ytd_rf ? diff / Math.abs(r.ytd_rf) : null;
+  const material = Math.abs(diff) >= 5000 && (p === null || Math.abs(p) >= 0.10);
+  return {diff, fav, p, material};
+}
+const bvchip = v => {
+  if(Math.abs(v.diff) < 1000) return '<span class="bchip good"><span aria-hidden="true">✓</span>On track</span>';
+  const cls = v.fav ? "good" : (Math.abs(v.p ?? 1) > 0.15 ? "critical" : "serious");
+  return `<span class="bchip ${cls}"><span aria-hidden="true">${v.fav?"✓":"▲"}</span>${v.fav?"Favourable":"Adverse"} ${bfmtK(Math.abs(v.diff))}${v.p!==null ? " ("+bpct(v.p)+")" : ""}</span>`;
+};
+
+function bindBudTips(root){
+  const tt = document.getElementById("budTip");
+  if(!tt) return;
+  root.querySelectorAll("[data-tip]").forEach(el=>{
+    el.addEventListener("mousemove", e=>{
+      tt.innerHTML = el.dataset.tip;
+      tt.style.display = "block";
+      const w = tt.offsetWidth, h = tt.offsetHeight;
+      tt.style.left = Math.min(e.clientX+14, innerWidth-w-10)+"px";
+      tt.style.top = (e.clientY-h-12 < 8 ? e.clientY+16 : e.clientY-h-12)+"px";
+    });
+    el.addEventListener("mouseleave", ()=>tt.style.display="none");
+  });
+}
+function budHbars(items, opts={}){
+  const labW = opts.labW||190, valW=64, barH=20, gap=10, W=640;
+  const max = Math.max(...items.map(i=>i.value), 1);
+  const plotW = W - labW - valW;
+  const H = items.length*(barH+gap)+4;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(opts.aria||"bar chart")}">`;
+  items.forEach((it,i)=>{
+    const y = i*(barH+gap)+2, bw = Math.max(2, plotW*it.value/max);
+    s += `<text class="cat" x="${labW-8}" y="${y+barH/2+4}" text-anchor="end">${esc(it.label)}</text>`;
+    s += `<rect data-tip="${esc(it.tip||`<span class='t'>${esc(it.label)}</span>${bfmt(it.value)}`)}" x="${labW}" y="${y}" width="${bw}" height="${barH}" rx="4" fill="#1a5fb4"/>`;
+    s += `<text class="val" x="${labW+bw+7}" y="${y+barH/2+4}">${bfmtK(it.value)}</text>`;
+  });
+  s += `<line x1="${labW}" y1="0" x2="${labW}" y2="${H}" stroke="#c9c4c0"/></svg>`;
+  return `<div style="max-width:720px">${s}</div>`;
+}
+function budDiverge(items){
+  const labW=250, W=700, barH=18, gap=12;
+  const max = Math.max(...items.map(i=>Math.abs(i.v)), 0.3);
+  const plotW = (W-labW-110)/2, cx = labW+plotW+55;
+  const H = items.length*(barH+gap)+4;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="variance vs year-to-date budget">`;
+  items.forEach((it,i)=>{
+    const y = i*(barH+gap)+2;
+    const bw = Math.max(2, plotW*Math.min(Math.abs(it.v),max)/max);
+    const over = it.v > 0;
+    s += `<text class="cat" x="${labW-8}" y="${y+barH/2+4}" text-anchor="end">${esc(it.label)}</text>`;
+    s += `<rect data-tip="${esc(`<span class='t'>${esc(it.label)}</span><div class='r'><span>${over?"Over":"Under"} YTD budget</span><b>${bfmt(Math.abs(it.amt))}</b></div><div class='r'><span>Variance</span><b>${bpct(it.v)}</b></div>`)}" x="${over?cx:cx-bw}" y="${y}" width="${bw}" height="${barH}" rx="4" fill="${over?"#C62828":"#1a5fb4"}"/>`;
+    s += `<text class="val" x="${over?cx+bw+7:cx-bw-7}" y="${y+barH/2+4}" ${over?"":'text-anchor="end"'}>${bpct(it.v)}</text>`;
+  });
+  s += `<line x1="${cx}" y1="0" x2="${cx}" y2="${H}" stroke="#c9c4c0"/></svg>`;
+  return `<div style="max-width:720px">${s}</div>
+  <p class="count-note" style="margin:6px 0 0"><span style="color:#C62828">■</span> spent more than year-to-date budget &nbsp; <span style="color:#1a5fb4">■</span> spent less</p>`;
+}
+function budColumns(vals, tips){
+  const W=640, H=190, padL=46, padB=22, padT=14;
+  const max = Math.max(...vals, 1);
+  const plotW = W-padL-10, plotH = H-padB-padT, cw = plotW/12;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="monthly budget phasing">`;
+  for(let g=0; g<=3; g++){
+    const y = padT + plotH - plotH*g/3;
+    s += `<line x1="${padL}" y1="${y}" x2="${W-10}" y2="${y}" stroke="#eceae8"/>`;
+    s += `<text x="${padL-6}" y="${y+4}" text-anchor="end">${bfmtK(max*g/3)}</text>`;
+  }
+  vals.forEach((v,i)=>{
+    const bh = Math.max(v>0?2:0, plotH*v/max);
+    const x = padL + i*cw + cw*0.14, bw = cw*0.72;
+    s += `<rect data-tip="${esc(tips[i])}" x="${x}" y="${padT+plotH-bh}" width="${bw}" height="${bh}" rx="4" fill="#1a5fb4"/>`;
+    s += `<text x="${padL+i*cw+cw/2}" y="${H-6}" text-anchor="middle">${BUD_MONTHS[i]}</text>`;
+  });
+  s += `<line x1="${padL}" y1="${padT+plotH}" x2="${W-10}" y2="${padT+plotH}" stroke="#c9c4c0"/></svg>`;
+  return `<div style="max-width:720px">${s}</div>`;
+}
+function budAgg(rows, key){
+  const m = new Map();
+  rows.forEach(r=>{
+    const k = key(r);
+    if(!m.has(k)) m.set(k,{b2627:0, rf2526:0, a2526:0, cont:0, n:0});
+    const o = m.get(k);
+    o.b2627+=r.b2627||0; o.rf2526+=r.rf2526||0; o.a2526+=r.a2526||0; o.cont+=r.cont||0; o.n++;
+  });
+  return m;
+}
+
+async function refreshBudget(){
+  if(!apiMode) return false;
+  const {ok, data} = await apiCall("GET","/api/budget" + (viewAs ? "?viewAs="+encodeURIComponent(viewAs) : ""));
+  if(!ok) return false;
+  budget = data;
+  return true;
+}
+async function openBudget(){
+  const body = document.getElementById("budBody");
+  if(!apiMode){
+    document.getElementById("budAdmin").innerHTML = ""; document.getElementById("budTabs").innerHTML = "";
+    body.innerHTML = '<div class="card"><h3>Budget</h3><p class="rubric-note">The budget module is only available in the live shared app — its figures live in the shared database and are never embedded in this offline copy.</p></div>';
+    return;
+  }
+  if(budget) renderBudget();
+  else body.innerHTML = '<div class="card"><p class="rubric-note">Loading budget data…</p></div>';
+  await refreshBudget();
+  renderBudget();
+}
+function renderBudget(){
+  renderBudAdmin();
+  const tabsEl = document.getElementById("budTabs");
+  const bodyEl = document.getElementById("budBody");
+  if(!tabsEl || !bodyEl) return;
+  const have = BUD_PANELS.filter(([p]) => budget && budget.panels && budget.panels[p]);
+  if(!have.length){
+    tabsEl.innerHTML = "";
+    bodyEl.innerHTML = `<div class="card"><h3>Budget</h3><p class="rubric-note">${(budget && budget.present===false && isAdmin())
+      ? "No budget data has been imported yet — use <b>Import budget data</b> above."
+      : "No budget information is available to you yet."}</p></div>`;
+    return;
+  }
+  if(!have.some(([p])=>p===budTab)) budTab = have[0][0];
+  const hid = Array.isArray(budget.hidden) ? budget.hidden : null;   // admins only
+  tabsEl.innerHTML = have.map(([p,label]) =>
+    `<button class="${budTab===p?'active':''}" onclick="setBudTab('${p}')">${label}${hid && hid.includes(p) ? " 🙈" : ""}</button>`).join("");
+  const pay = budget.panels[budTab];
+  let inner = "";
+  if(budTab==="budget.org") inner = budOrgHtml(pay);
+  else if(budTab==="budget.variance") inner = budVarianceHtml(pay);
+  else if(budTab==="budget.holder") inner = budHolderHtml(pay);
+  else if(budTab==="budget.structure") inner = budStructureHtml(pay);
+  else if(budTab==="budget.health") inner = budHealthHtml(pay);
+  bodyEl.innerHTML = budPanelBar(budTab) + inner;
+  budWire(bodyEl);
+  bindBudTips(bodyEl);
+}
+function setBudTab(p){ budTab = p; renderBudget(); }
+
+/* ---- admin: panel hiding, import, remove ---- */
+function budPanelBar(pid){
+  if(!budget || !Array.isArray(budget.hidden)) return "";   // only real admins receive the hidden list
+  const hidden = budget.hidden.includes(pid);
+  return `<div class="bud-adminbar no-print">
+    ${hidden ? '<span class="tag tag-hidden">🙈 Hidden — only admins can see this panel</span>' : ''}
+    <button class="btn-soft" style="padding:4px 12px;font-size:11.5px" onclick="toggleBudPanel('${pid}')">${hidden ? "Unhide for everyone" : "Hide from everyone else"}</button>
+  </div>`;
+}
+async function toggleBudPanel(pid){
+  if(viewAsGuard()) return;
+  if(!apiMode || !isAdmin() || !budget || !Array.isArray(budget.hidden)) return;
+  const hidden = budget.hidden.includes(pid)
+    ? budget.hidden.filter(p=>p!==pid)
+    : budget.hidden.concat([pid]);
+  const {ok, data} = await apiCall("PUT","/api/panels",{panels:{hidden}});
+  if(!ok){ toast(data.error||"Could not change panel visibility."); return; }
+  budget.hidden = data.panels.hidden;
+  toast(budget.hidden.includes(pid) ? "Panel hidden — only you and other admins can see it now." : "Panel visible to everyone again.");
+  renderBudget();
+  refreshState({force:true});
+}
+function renderBudAdmin(){
+  const el = document.getElementById("budAdmin"); if(!el) return;
+  if(!apiMode || !budget || !Array.isArray(budget.hidden)){ el.innerHTML=""; return; }
+  const m = budget.meta;
+  el.innerHTML = `<div class="card">
+    <h3>Budget data <span class="tag tag-ai" style="background:#ede7f6;color:#4527a0">admins only</span></h3>
+    <p class="rubric-note">${m ? `Current data: <b>${m.lines}</b> budget lines${m.varianceLines?` and <b>${m.varianceLines}</b> variance-report lines`:""}, imported ${esc(String(m.imported).slice(0,10))} by ${esc(m.importedBy||"?")}${m.label?` from <i>${esc(m.label)}</i>`:""}.`
+      : "No budget data imported yet."}
+      Build the dashboard locally from the budget workbook (budget-dashboard tools: <code>python3 build.py &lt;budget.xlsx&gt; dashboard.html [variance.xlsx]</code>), then import the generated file here — the figures go into the shared staff-only database, never into this page or the public repository.
+      ${budget.hidden.length ? ` <b>${budget.hidden.length}</b> panel${budget.hidden.length>1?"s are":" is"} hidden from everyone except admins (marked 🙈).` : " Every panel is currently visible to all staff — use the button on a panel to hide it."}</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn-primary" onclick="importBudget()">⬆ Import budget data</button>
+      ${m ? `<button class="btn-danger" onclick="deleteBudget()">Remove budget data</button>` : ""}
+    </div></div>`;
+}
+function importBudget(){
+  if(viewAsGuard()) return;
+  if(!apiMode || !isAdmin()) return;
+  document.getElementById("budFile").click();
+}
+// Accepts: the built dashboard.html (payloads embedded as single-line consts),
+// a JSON object {data, variance, map}, or a bare JSON array of budget lines.
+function parseBudgetImport(text){
+  text = String(text);
+  try{
+    const j = JSON.parse(text);
+    if(Array.isArray(j)) return {data:j, variance:[], map:{}};
+    if(j && Array.isArray(j.data)) return {data:j.data, variance:j.variance||[], map:j.map||{}};
+  }catch(e){}
+  const grab = name => {
+    const mline = text.match(new RegExp("^const "+name+" = (.*)$","m"));
+    if(!mline) return null;
+    let s = mline[1].trim().replace(/^\/\*__\w+__\*\//,"");
+    const starts = [s.indexOf("["), s.indexOf("{")].filter(i=>i>=0);
+    if(!starts.length) return null;
+    s = s.slice(Math.min(...starts), Math.max(s.lastIndexOf("]"), s.lastIndexOf("}"))+1);
+    try{ return JSON.parse(s); }catch(e){ return null; }
+  };
+  const data = grab("DATA");
+  if(!Array.isArray(data) || !data.length)
+    throw new Error("no budget lines found — upload the built dashboard.html or its JSON export");
+  return {data, variance: grab("VAR")||[], map: grab("MAP")||{}};
+}
+async function budFileChosen(inp){
+  const f = inp.files && inp.files[0]; inp.value = ""; if(!f) return;
+  let raw;
+  try{ raw = parseBudgetImport(await f.text()); }
+  catch(e){ toast("Could not read that file: " + (e.message||e)); return; }
+  if(!(await askConfirm("Import budget data?",
+    `${raw.data.length} budget lines${raw.variance.length?` and ${raw.variance.length} variance-report lines`:""} will replace the Budget module's data for everyone. Panel visibility settings are kept.`,
+    "Import"))) return;
+  raw.label = f.name;
+  const {ok, data} = await apiCall("POST","/api/budget",{budget:raw});
+  if(!ok){ toast(data.error||"Import failed."); return; }
+  toast("Budget data imported for everyone.");
+  await refreshState({force:true});
+  await refreshBudget();
+  renderBudget();
+}
+async function deleteBudget(){
+  if(viewAsGuard()) return;
+  if(!apiMode || !isAdmin()) return;
+  if(!(await askConfirm("Remove budget data?","The Budget module will be empty for everyone until a new file is imported. Panel visibility settings are kept.","Remove", true))) return;
+  const {ok, data} = await apiCall("DELETE","/api/budget",{});
+  if(!ok){ toast(data.error||"Could not remove the budget data."); return; }
+  toast("Budget data removed.");
+  await refreshState({force:true});
+  await refreshBudget();
+  renderBudget();
+}
+function budWire(root){
+  root.querySelectorAll(".bud-linehead").forEach(tr=>{
+    const open = ()=>{ const d = document.getElementById(tr.dataset.desc); if(d) d.hidden = !d.hidden; };
+    tr.addEventListener("click", open);
+    tr.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } });
+  });
+  root.querySelectorAll(".bud-showmore").forEach(b=>b.addEventListener("click", ()=>{
+    root.querySelectorAll(`[data-quiet="${b.dataset.quietfor}"]`).forEach(tr=>tr.hidden=false);
+    b.closest("tr").hidden = true;
+  }));
+  root.querySelectorAll(".bud-comment").forEach(t=>{
+    try{ t.value = localStorage.getItem(t.dataset.ckey)||""; }catch(e){}
+    t.addEventListener("input", ()=>{ try{ localStorage.setItem(t.dataset.ckey, t.value); }catch(e){} });
+  });
+}
+
+/* ---- panel renderers (payload shapes are built server-side at import) ---- */
+function budOrgHtml(o){
+  const t = o.totals, ytdB = t.rf2526 * BUD_YTD_FRAC;
+  const depts = o.depts.map(d=>({...d, label:shortDept(d.dept)}));
+  const d27 = depts.map(d=>({label:d.label, value:d.b2627,
+    tip:`<span class='t'>${esc(d.label)}</span><div class='r'><span>26/27 budget</span><b>${bfmt(d.b2627)}</b></div><div class='r'><span>Budget lines</span><b>${d.n}</b></div>`}))
+    .sort((a,b)=>b.value-a.value);
+  const acts = o.acts.map(a=>({label:a.act, value:a.b2627})).sort((a,b)=>b.value-a.value);
+  const varItems = depts.map(d=>{ const yb = d.rf2526*BUD_YTD_FRAC;
+    return {label:d.label, v: yb ? (d.a2526-yb)/yb : 0, amt: d.a2526-yb}; }).sort((a,b)=>a.v-b.v);
+  const ragRows = depts.map(d=>{
+    const yb = d.rf2526*BUD_YTD_FRAC, st = budStatus(d.a2526, yb);
+    return `<tr><td>${esc(d.label)}</td><td class="n">${bfmt(d.rf2526)}</td><td class="n">${bfmt(yb)}</td>
+      <td class="n">${bfmt(d.a2526)}</td><td class="n" style="color:${d.a2526-yb>0?'var(--sev)':'#1a5fb4'}">${bfmt(d.a2526-yb)}</td>
+      <td>${bchip(st)}</td></tr>`;
+  }).join("");
+  return `
+  <div class="kpis">
+    <div class="kpi neutral"><div class="n">${bfmtK(t.b2627)}</div><div class="t">26/27 expenditure budget · ${t.active} active lines, ${t.depts} departments</div></div>
+    <div class="kpi neutral"><div class="n">${bfmtK(t.a2526)}</div><div class="t">25/26 spend to March · of ${bfmtK(t.rf2526)} re-reforecast</div></div>
+    <div class="kpi ${t.a2526-ytdB>0?'alert':'ok'}"><div class="n">${bfmtK(Math.abs(t.a2526-ytdB))}</div><div class="t">${t.a2526-ytdB>0?"over":"under"} straight-line YTD budget (25/26)</div></div>
+    <div class="kpi warn"><div class="n">${t.lines}</div><div class="t">budget lines · ${t.lines-t.active} zero or blank in 26/27 — see Data health</div></div>
+  </div>
+  <div class="dash-grid">
+    <div class="card"><h3>26/27 budget by department</h3><div class="count-note">Each department = one budget holder for now</div>${budHbars(d27,{aria:"26/27 budget by department"})}</div>
+    <div class="card"><h3>25/26 variance vs YTD budget, by department</h3><div class="count-note">Actuals to March vs 6/12 of re-reforecast (straight-line)</div>${budDiverge(varItems)}</div>
+  </div>
+  <div class="card"><h3>26/27 budget by activity</h3><div class="count-note">The rollup used in the trustee management accounts</div>${budHbars(acts,{labW:280,aria:"26/27 budget by activity"})}</div>
+  <div class="bud-callout"><b>Phasing caveat:</b> grant awards and programme spend are lumpy — a department can look heavily "underspent" simply because its spend lands later in the year. Phased budgets from Xero make this comparison honest (see Data health).</div>
+  <div class="card"><h3>Department scorecard — 25/26 to March</h3>
+    <div class="table-scroll"><table class="pack-table"><thead><tr><th>Department</th><th class="n">Full-year re-reforecast</th><th class="n">YTD budget (6/12)</th><th class="n">Actual to Mar</th><th class="n">Variance £</th><th>Status</th></tr></thead><tbody>${ragRows}</tbody></table></div></div>`;
+}
+function budHolderHtml(h){
+  const depts = h.depts || [];
+  if(!budDept || !depts.includes(budDept)) budDept = depts[0];
+  const rows = h.rows.filter(r=>r.dept===budDept);
+  const b27 = bsum(rows,r=>r.b2627), cont = bsum(rows,r=>r.cont);
+  const rf = bsum(rows,r=>r.rf2526), act = bsum(rows,r=>r.a2526);
+  const ytdB = rf*BUD_YTD_FRAC, st = budStatus(act, ytdB);
+  const phase = Array(12).fill(0);
+  rows.forEach(r=>r.phase.forEach((p,i)=>phase[i]+=p||0));
+  const phasedTotal = phase.reduce((a,b)=>a+b,0);
+  const phaseGap = Math.abs(phasedTotal-b27)>1;
+  const byAct = budAgg(rows, r=>r.act);
+  const varItems = [...byAct].filter(([,o])=>o.rf2526*BUD_YTD_FRAC>500 || o.a2526>500)
+    .map(([a,o])=>{ const yb = o.rf2526*BUD_YTD_FRAC;
+      return {label:String(a).replace(/^Direct Programme /,""), v: yb?(o.a2526-yb)/yb:(o.a2526?1:0), amt:o.a2526-yb}; })
+    .sort((x,y)=>x.v-y.v);
+  let tbl = "";
+  [...byAct].sort((a,b)=>b[1].b2627-a[1].b2627).forEach(([a,o])=>{
+    tbl += `<tr class="acthead"><td colspan="2">${esc(a)}</td><td class="n">${bfmt(o.rf2526)}</td><td class="n">${bfmt(o.a2526)}</td><td class="n">${bfmt(o.b2627)}</td><td></td></tr>`;
+    rows.filter(r=>r.act===a).sort((x,y)=>(y.b2627||0)-(x.b2627||0)).forEach((r,i)=>{
+      const yb = (r.rf2526||0)*BUD_YTD_FRAC;
+      const s = (r.rf2526||r.a2526) ? bchip(budStatus(r.a2526||0, yb)) : '<span class="bud-fold">—</span>';
+      const id = `bud-d-${String(a).replace(/\W/g,"")}-${i}`;
+      tbl += `<tr class="bud-linehead" tabindex="0" data-desc="${id}" title="${r.desc?"Show budget breakdown":""}">
+        <td class="bud-fold">${r.code??""}</td><td>${esc(r.name)}${r.desc?' <span class="bud-fold">ⓘ</span>':""}</td>
+        <td class="n">${r.rf2526!=null?bfmt(r.rf2526):'<span class="bud-fold">—</span>'}</td>
+        <td class="n">${r.a2526!=null?bfmt(r.a2526):'<span class="bud-fold">—</span>'}</td>
+        <td class="n">${r.b2627!=null?bfmt(r.b2627):'<span class="bud-fold">—</span>'}</td>
+        <td>${s}</td></tr>`;
+      if(r.desc) tbl += `<tr id="${id}" hidden><td></td><td colspan="5"><div class="bud-desc">${esc(r.desc)}</div></td></tr>`;
+    });
+  });
+  return `
+  <div class="filters no-print"><label for="budDeptSel">Budget holder</label>
+    <select id="budDeptSel" onchange="budDept=this.value;renderBudget()">${depts.map(d=>`<option value="${esc(d)}" ${d===budDept?"selected":""}>${esc(shortDept(d))}</option>`).join("")}</select>
+    <span class="count-note">Departments stand in for budget holders until the cost-centre → person mapping exists.</span></div>
+  <div class="kpis">
+    <div class="kpi neutral"><div class="n">${bfmtK(b27)}</div><div class="t">26/27 budget · ${rows.filter(r=>r.b2627).length} active lines${cont?" · incl. "+bfmtK(cont)+" contingency":""}</div></div>
+    <div class="kpi neutral"><div class="n">${bfmtK(act)}</div><div class="t">25/26 spend to March · of ${bfmtK(rf)} re-reforecast</div></div>
+    <div class="kpi ${st.cls==='good'?'ok':st.cls==='under'?'neutral':'alert'}"><div class="n" style="font-size:17px;padding:8px 0 4px">${bchip(st)}</div><div class="t">vs straight-line YTD budget of ${bfmtK(ytdB)}</div></div>
+  </div>
+  <div class="card"><h3>26/27 budget by month</h3><div class="count-note">Phasing as entered in the budget workbook (Oct–Sep)</div>
+    ${budColumns(phase, phase.map((v,i)=>`<span class='t'>${BUD_MONTHS[i]} 26/27</span>${bfmt(v)}`))}
+    ${phaseGap?`<div class="bud-callout" style="margin:12px 0 0"><b>Phasing incomplete:</b> months add to ${bfmtK(phasedTotal)} but the annual budget is ${bfmtK(b27)} — ${bfmtK(Math.abs(b27-phasedTotal))} is not yet phased.</div>`:""}</div>
+  <div class="card"><h3>25/26 variance vs YTD budget, by activity</h3><div class="count-note">Straight-line YTD (6/12) — phased budgets would sharpen this</div>
+    ${varItems.length?budDiverge(varItems):'<p class="count-note">No 25/26 activity for this department.</p>'}</div>
+  <div class="card"><h3>Budget lines</h3><div class="count-note">Click a line with ⓘ for the budget breakdown / justification behind it.</div>
+    <div class="table-scroll"><table class="pack-table"><thead><tr><th>Code</th><th>Line</th><th class="n">25/26 RF</th><th class="n">25/26 Act</th><th class="n">26/27 Budget</th><th>Status</th></tr></thead><tbody>${tbl}</tbody></table></div></div>`;
+}
+function budVarianceHtml(p){
+  const VAR = p.rows||[], MAP = p.map||{structure:{}, code_to_line:{}};
+  if(!VAR.length) return '<div class="card"><h3>Monthly variance</h3><p class="rubric-note">No monthly variance report was included in the current import — rebuild the dashboard with the Xero variance report as the third argument and re-import.</p></div>';
+  const clean = VAR.filter(r=>r.section!=="Unmapped Accounts" && r.section!=="Net Investment Gain/(Loss)");
+  const suspense = VAR.filter(r=>r.section==="Unmapped Accounts" && r.ytd_act!==0);
+  const inc = clean.filter(budIsIncome), exp = clean.filter(r=>!budIsIncome(r));
+  const iAct = bsum(inc,r=>r.ytd_act), iBud = bsum(inc,r=>r.ytd_rf);
+  const eAct = bsum(exp,r=>r.ytd_act), eBud = bsum(exp,r=>r.ytd_rf);
+  const nProposed = Object.keys(MAP.structure||{}).length;
+  const mode = (nProposed && budMode==="proposed") ? "proposed" : "current";
+  let rows;
+  if(mode==="proposed"){
+    const m = new Map();
+    clean.forEach(r=>{
+      const line = (MAP.code_to_line||{})[String(r.code)];
+      if(!line) return;
+      if(!m.has(line)) m.set(line,{section:r.section, group:MAP.structure[line].activity, code:null, name:line, fy_rf:0, ytd_rf:0, ytd_act:0, folded:0});
+      const o = m.get(line);
+      o.fy_rf+=r.fy_rf||0; o.ytd_rf+=r.ytd_rf||0; o.ytd_act+=r.ytd_act||0; o.folded++;
+    });
+    rows = [...m.values()];
+  } else rows = clean.map(r=>({...r, folded:0}));
+  const exceptions = rows.map(r=>({r, v:budVerdict(r)})).filter(x=>x.v.material)
+    .sort((a,b)=>Math.abs(b.v.diff)-Math.abs(a.v.diff));
+  const groups = [...new Set(rows.map(r=>r.group))];
+  let tbl = "";
+  groups.forEach(g=>{
+    const rs = rows.filter(r=>r.group===g).sort((a,b)=>b.ytd_rf-a.ytd_rf);
+    const gAct = bsum(rs,r=>r.ytd_act), gBud = bsum(rs,r=>r.ytd_rf);
+    const flagged = rs.filter(r=>budVerdict(r).material);
+    const quiet = rs.filter(r=>!budVerdict(r).material);
+    const gid = "bg-"+String(g).replace(/\W/g,"");
+    tbl += `<tr class="acthead"><td colspan="2">${esc(g)} <span class="bud-fold">· ${budIsIncome(rs[0])?"income":"expenditure"}</span></td>
+      <td class="n">${bfmt(gBud)}</td><td class="n">${bfmt(gAct)}</td>
+      <td>${bvchip(budVerdict({...rs[0], ytd_act:gAct, ytd_rf:gBud}))}</td></tr>`;
+    const rrow = (r, muted) => `<tr${muted?' style="font-size:12px"':""}><td class="bud-fold">${r.code??(r.folded>1?r.folded+" codes":"")}</td>
+      <td>${esc(r.name)}</td><td class="n">${bfmt(r.ytd_rf)}</td><td class="n">${bfmt(r.ytd_act)}</td><td>${bvchip(budVerdict(r))}</td></tr>`;
+    flagged.forEach(r=>tbl+=rrow(r,false));
+    if(quiet.length){
+      quiet.forEach(r=>tbl+=rrow(r,true).replace("<tr", `<tr data-quiet="${gid}" hidden`));
+      tbl += `<tr><td></td><td colspan="4"><button class="bud-showmore" data-quietfor="${gid}">Show ${quiet.length} on-track line${quiet.length>1?"s":""}</button></td></tr>`;
+    }
+  });
+  return `
+  ${suspense.length?`<div class="bud-callout block"><b>Upload would be blocked:</b> unmapped postings found — ${suspense.map(r=>`${r.code} ${esc(r.name)} (${bfmt(r.ytd_act)})`).join(", ")}. These must be recoded in Xero before the month publishes to budget holders.</div>`:""}
+  <div class="kpis">
+    <div class="kpi neutral"><div class="n">${bfmtK(iAct)}</div><div class="t">YTD income (phased) · vs ${bfmtK(iBud)} budget</div></div>
+    <div class="kpi neutral"><div class="n">${bfmtK(eAct)}</div><div class="t">YTD expenditure (phased) · vs ${bfmtK(eBud)} budget</div></div>
+    <div class="kpi ${(iAct-eAct)<(iBud-eBud)?'warn':'ok'}"><div class="n">${bfmtK(iAct-eAct)}</div><div class="t">net position YTD · budgeted ${bfmtK(iBud-eBud)}</div></div>
+    <div class="kpi alert"><div class="n">${exceptions.length}</div><div class="t">exceptions — beyond ±10% and ±£5k of phased YTD</div></div>
+  </div>
+  ${nProposed?`<div class="filters no-print viewtoggle" style="margin-bottom:10px">
+    <button class="${mode==="current"?"active":""}" onclick="budMode='current';renderBudget()">Current codes (${clean.length} lines)</button>
+    <button class="${mode==="proposed"?"active":""}" onclick="budMode='proposed';renderBudget()">Proposed structure (${nProposed} lines)</button>
+  </div>`:""}
+  <div class="card"><h3>Exceptions — commentary needed</h3>
+    <div class="count-note">Biggest variances vs phased YTD budget first. Notes save in your browser only for now — paste them into the trustee narrative.</div>
+    <div class="table-scroll"><table class="pack-table"><thead><tr><th>Line</th><th class="n">YTD budget</th><th class="n">YTD actual</th><th>Status</th></tr></thead>
+    <tbody>${exceptions.slice(0,12).map(({r,v})=>`<tr><td>${esc(r.name)}<div class="bud-fold">${esc(r.group)}</div>
+      <textarea class="bud-comment" data-ckey="budc-${esc(r.name)}" placeholder="Why? What happens next? (one line)"></textarea></td>
+      <td class="n">${bfmt(r.ytd_rf)}</td><td class="n">${bfmt(r.ytd_act)}</td><td>${bvchip(v)}</td></tr>`).join("")}</tbody></table></div>
+    ${exceptions.length>12?`<p class="count-note">…and ${exceptions.length-12} more, in the full report below.</p>`:""}</div>
+  <div class="card"><h3>Full report — phased YTD</h3>
+    <div class="count-note">Grouped as in the trustee accounts; on-track lines are folded away — click to reveal. Comparisons use Xero's phased YTD reforecast.</div>
+    <div class="table-scroll"><table class="pack-table"><thead><tr><th>Code</th><th>Line</th><th class="n">YTD budget (phased)</th><th class="n">YTD actual</th><th>Status</th></tr></thead><tbody>${tbl}</tbody></table></div></div>`;
+}
+function budStructureHtml(s){
+  if(!s.lines || !s.lines.length) return '<div class="card"><h3>Proposed structure</h3><p class="rubric-note">No structure mapping was included in the current import.</p></div>';
+  const incomeActs = ["Philanthropy & Partnerships","Investment Income","Other Income"];
+  const nInc = s.lines.filter(l=>incomeActs.includes(l.activity)).length;
+  const acts = [...new Set(s.lines.map(l=>l.activity))];
+  let tbl = "";
+  acts.forEach(a=>{
+    tbl += `<tr class="acthead"><td colspan="4">${esc(a)}</td></tr>`;
+    s.lines.filter(l=>l.activity===a).forEach(l=>{
+      tbl += `<tr><td>${esc(l.name)}</td><td class="bud-fold">${l.codes.length===1?"code "+l.codes[0]:l.codes.length+" codes: "+l.codes.join(", ")}</td>
+        <td class="n">${bfmt(l.fyrf)}</td><td class="n">${bfmt(l.b27)}</td></tr>`;
+    });
+  });
+  return `
+  <p class="rubric-note" style="margin-bottom:14px">The approved simplification principles applied to every current account code. Xero keeps its full code list (payroll and statutory postings untouched) — this is the management view that the budget, the monthly report and this dashboard all roll up to.</p>
+  <div class="kpis">
+    <div class="kpi neutral"><div class="n">${s.codes}</div><div class="t">account codes today — all mapped, none orphaned</div></div>
+    <div class="kpi ok"><div class="n">${s.lines.length}</div><div class="t">reporting lines · ${nInc} income, ${s.lines.length-nInc} expenditure</div></div>
+  </div>
+  <div class="bud-callout"><b>See it in action:</b> the Monthly variance panel has a toggle that re-reads the latest report through this structure — same totals, a third of the rows.</div>
+  <div class="card"><h3>The ${s.lines.length} reporting lines</h3>
+    <div class="count-note">25/26 full-year reforecast and 26/27 budget per new line. UR/RE code pairs merge (fund moves to Xero tracking); "(pool)" lines carry the £10k promotion rule.</div>
+    <div class="table-scroll"><table class="pack-table"><thead><tr><th>Reporting line</th><th>Folds in</th><th class="n">25/26 FY RF</th><th class="n">26/27 budget</th></tr></thead><tbody>${tbl}</tbody></table></div></div>`;
+}
+function budHealthHtml(h){
+  const list = (rows, cols) => `<div class="table-scroll"><table class="pack-table"><thead><tr><th>Dept</th><th>Code</th><th>Line</th>${cols.map(c=>`<th class="n">${c[0]}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(r=>`<tr><td>${esc(shortDept(r.dept))}</td><td class="bud-fold">${r.code??""}</td><td>${esc(r.name)}</td>${cols.map(c=>`<td class="n">${c[1](r)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  const c = h.counts;
+  return `
+  <p class="rubric-note" style="margin-bottom:14px">The checks a monthly upload would run automatically — and the case for simplifying the budget structure: of ${c.total} lines, only ${c.over5k} carry a 26/27 budget above £5k.</p>
+  <div class="kpis">
+    <div class="kpi neutral"><div class="n">${c.dead}</div><div class="t">dead lines — no 26/27 budget, no 25/26 activity</div></div>
+    <div class="kpi warn"><div class="n">${c.tiny}</div><div class="t">micro-budgets ≤ £5k · ${bfmtK(h.tinyTotal)} (${Math.round(h.tinyTotal/(h.totalB27||1)*1000)/10}% of budget)</div></div>
+    <div class="kpi warn"><div class="n">${c.noPhase}</div><div class="t">active lines with no monthly phasing</div></div>
+    <div class="kpi alert"><div class="n">${c.badPhase}</div><div class="t">phasing ≠ annual budget</div></div>
+  </div>
+  <div class="card"><h3>Micro-budget lines (≤ £5k in 26/27)</h3><div class="count-note">Each one costs a coding decision on every invoice and a row in every report</div>${list(h.tinyRows,[["26/27",r=>bfmt(r.b2627)]])}</div>
+  <div class="dash-grid">
+    <div class="card"><h3>Phasing doesn't reconcile</h3><div class="count-note">Sum of months vs annual budget${c.badPhase>h.badPhaseRows.length?` — first ${h.badPhaseRows.length} of ${c.badPhase}`:""}</div>${list(h.badPhaseRows,[["Annual",r=>bfmt(r.b2627)],["Phased",r=>bfmt(r.phased)]])}</div>
+    <div class="card"><h3>Dead lines</h3><div class="count-note">Zero everywhere — delete or archive in the next budget round${c.dead>h.deadRows.length?` — first ${h.deadRows.length} of ${c.dead}`:""}</div>${list(h.deadRows,[["26/27",()=>"£0"]])}</div>
+  </div>`;
+}
+
 /* ============ ACCESS MODULE (admins) ============ */
 let accDraft = null;
 function accCurrent(){
@@ -2276,6 +2799,7 @@ const CAPABILITIES = [
   ["Meetings & contacts settings","Yes","No","No"],
   ["Access module & view-as","Yes","No","No"],
   ["Backups — take, download, restore","Yes","No","No"],
+  ["Budget module","All panels · import data · hide/unhide panels","Visible panels only","Visible panels only"],
   ["Export JSON / CSV","Yes (JSON incl. hidden)","Yes (hidden excluded)","Yes (hidden excluded)"]
 ];
 function renderAccess(){

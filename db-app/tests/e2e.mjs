@@ -293,7 +293,7 @@ import { SEED_MILESTONES } from '../seed.mjs';
   jim.showModule('access');
   ok(d(jim).querySelectorAll('#accUsers tr').length>=5, 'access users table renders');
   ok(d(jim).querySelectorAll('#accCats .enabler-tile').length===8, '8 ownership tiles');
-  ok(d(jim).querySelectorAll('#accMatrix tbody tr').length===11, 'capability matrix 11 rows');
+  ok(d(jim).querySelectorAll('#accMatrix tbody tr').length===12, 'capability matrix 12 rows');
 }
 
 
@@ -354,6 +354,104 @@ import { SEED_MILESTONES } from '../seed.mjs';
   // put the access config back for any later tests
   const baseUsers = jsNow.people.map(p=>({email:p.email, name:p.name, group:p.group}));
   ok((await apiJ('PUT','/api/access',{access:{users:baseUsers, catOwner:jsNow.catOwner}})).status===200, 'access config restored');
+}
+
+
+// --- budget module: import, panel hiding (server-side stripping), restore semantics ---
+{
+  const apiAs = (email, method, path, body) => worker.fetch(new Request('https://tcf.example'+path,
+    {method, headers:{'Cf-Access-Authenticated-User-Email':email,'content-type':'application/json'},
+     body: body?JSON.stringify(body):undefined}), env);
+  const BUD = {
+    data: [
+      {dept:"100 - Programmes", cls:"UR", act:"Fellowship Grant Awards", typ:"Grants", code:5010, name:"Fellowship grants", b2526:900000, rf2526:1000000, a2526:400000, b2627:1200000, cont:0, desc:"120 Fellowships at ~10k average", phase:[0,0,0,0,0,0,300000,300000,300000,300000,0,0]},
+      {dept:"100 - Programmes", cls:"UR", act:"Direct Programme Staffing", typ:"Staff", code:6010, name:"Programme salaries", b2526:400000, rf2526:420000, a2526:230000, b2627:450000, cont:0, desc:"", phase:[37500,37500,37500,37500,37500,37500,37500,37500,37500,37500,37500,37500]},
+      {dept:"200 - Support", cls:"UR", act:"Support Staffing", typ:"Staff", code:8010, name:"Support salaries", b2526:300000, rf2526:310000, a2526:150000, b2627:330000, cont:10000, desc:"SENSITIVE-SALARY-BREAKDOWN", phase:[27500,27500,27500,27500,27500,27500,27500,27500,27500,27500,27500,27500]},
+      {dept:"200 - Support", cls:"UR", act:"Support Operational", typ:"Ops", code:8110, name:"Office costs", b2526:50000, rf2526:50000, a2526:30000, b2627:3000, cont:0, desc:"", phase:[3000,0,0,0,0,0,0,0,0,0,0,0]},
+      {dept:"200 - Support", cls:"UR", act:"Support Operational", typ:"Ops", code:8120, name:"Old subscriptions", b2526:5000, rf2526:0, a2526:0, b2627:0, cont:0, desc:"", phase:[0,0,0,0,0,0,0,0,0,0,0,0]},
+      {dept:"100 - Programmes", cls:"UR", act:"Direct Programme Operational", typ:"Ops", code:6150, name:"Programme events", b2526:80000, rf2526:80000, a2526:20000, b2627:90000, cont:0, desc:"", phase:[0,0,45000,0,0,0,0,0,0,0,0,0]}
+    ],
+    variance: [
+      {section:"Charitable Income", group:"Donations", code:4110, name:"Individual giving", fy_budget:500000, fy_rf:520000, ytd_rf:390000, ytd_act:420000, var:30000, var_pct:0.0769},
+      {section:"Charitable Expenditure", group:"Grants", code:5010, name:"Fellowship grants", fy_budget:1000000, fy_rf:1000000, ytd_rf:700000, ytd_act:760000, var:60000, var_pct:0.0857},
+      {section:"Charitable Expenditure", group:"Grants", code:5020, name:"Activate grants", fy_budget:100000, fy_rf:100000, ytd_rf:75000, ytd_act:75500, var:500, var_pct:0.0067},
+      {section:"Unmapped Accounts", group:null, code:9999, name:"Suspense", fy_budget:0, fy_rf:0, ytd_rf:0, ytd_act:1234, var:1234, var_pct:0}
+    ],
+    map: {structure:{"Fellowship grants":{activity:"Fellowship Grant Awards", codes:[5010,5020]},
+                     "Individual giving":{activity:"Philanthropy & Partnerships", codes:[4110]}},
+          code_to_line:{"5010":"Fellowship grants","5020":"Fellowship grants","4110":"Individual giving"}}
+  };
+
+  // parseBudgetImport handles all three accepted shapes
+  const builtHtml = '<title>x</title>\n<script>\nconst DATA = ' + JSON.stringify(BUD.data) +
+    ';\nconst VAR = ' + JSON.stringify(BUD.variance) + ';      // monthly report\nconst MAP = ' +
+    JSON.stringify(BUD.map) + ';      // proposed structure\n</scr' + 'ipt>';
+  const parsed = jim.parseBudgetImport(builtHtml);
+  ok(parsed.data.length===6 && parsed.variance.length===4 && parsed.map.code_to_line['5010']==='Fellowship grants',
+    'parseBudgetImport extracts payloads from a built dashboard.html');
+  ok(jim.parseBudgetImport(JSON.stringify({data:BUD.data})).data.length===6, 'parseBudgetImport accepts a JSON object');
+  ok(jim.parseBudgetImport(JSON.stringify(BUD.data)).data.length===6, 'parseBudgetImport accepts a bare JSON array');
+  let parseErr = null; try{ jim.parseBudgetImport('<html>nothing here</html>'); }catch(e){ parseErr = e; }
+  ok(!!parseErr, 'parseBudgetImport rejects a file with no payloads');
+
+  // import walls + validation
+  ok((await apiAs(NIK,'POST','/api/budget',{budget:BUD})).status===403, 'budget import is admin-only');
+  ok((await apiAs(JIM,'POST','/api/budget',{budget:{data:[{bad:1}]}})).status===400, 'malformed budget import rejected');
+  const imp = await (await apiAs(JIM,'POST','/api/budget',{budget:BUD})).json();
+  ok(imp.ok===true && imp.meta.lines===6 && imp.meta.varianceLines===4, 'admin import succeeds with counts');
+
+  // everyone sees all five panels while nothing is hidden
+  const nb0 = await (await apiAs(NIK,'GET','/api/budget')).json();
+  ok(Object.keys(nb0.panels).length===5 && nb0.hidden===undefined, 'non-admin gets all 5 panels, no hidden list');
+  ok((await state(NIK)).budget.visible===5, 'state flags 5 visible panels for editor');
+
+  // panel hiding: walls, validation, server-side stripping
+  ok((await apiAs(NIK,'PUT','/api/panels',{panels:{hidden:['budget.holder']}})).status===403, 'panel hiding is admin-only');
+  ok((await apiAs(JIM,'PUT','/api/panels',{panels:{hidden:['budget.nonsense']}})).status===400, 'unknown panel id rejected');
+  ok((await apiAs(JIM,'PUT','/api/panels',{panels:{hidden:['budget.holder']}})).status===200, 'admin hides the budget-holder panel');
+  const nb1res = await apiAs(NIK,'GET','/api/budget');
+  const nb1txt = await nb1res.text(); const nb1 = JSON.parse(nb1txt);
+  ok(!nb1.panels['budget.holder'] && Object.keys(nb1.panels).length===4, 'hidden panel absent for non-admin');
+  ok(!nb1txt.includes('SENSITIVE-SALARY-BREAKDOWN'), 'hidden panel data never leaves the server for non-admins');
+  const jb1 = await (await apiAs(JIM,'GET','/api/budget')).json();
+  ok(jb1.panels['budget.holder'] && jb1.hidden.includes('budget.holder'), 'admin still sees the hidden panel + hidden list');
+  ok((await state(NIK)).budget.visible===4 && (await state(JIM)).budget.visible===5, 'state visible counts reflect hiding');
+
+  // view-as previews the stripped payload for admins
+  const vaBud = await (await worker.fetch(new Request('https://tcf.example/api/budget?viewAs=Nikesh',
+    {headers:{'Cf-Access-Authenticated-User-Email':JIM}}), env)).json();
+  ok(!vaBud.panels['budget.holder'] && vaBud.hidden===undefined, 'view-as strips hidden panels for the admin preview');
+
+  // front-end: nav visibility + tabs + hidden marker + admin toolbar
+  await jim.refreshState({force:true}); await nik.refreshState({force:true}); await sleep(60);
+  ok(d(jim).getElementById('mod-budget').style.display==='', 'budget nav visible for admin');
+  ok(d(nik).getElementById('mod-budget').style.display==='', 'budget nav visible for editor');
+  jim.showModule('budget'); await sleep(250);
+  ok(d(jim).querySelectorAll('#budTabs button').length===5, 'admin sees all 5 panel tabs');
+  ok(d(jim).getElementById('budTabs').textContent.includes('\u{1F648}'), 'hidden panel marked for admin');
+  ok(d(jim).getElementById('budAdmin').textContent.includes('Import budget data'), 'admin toolbar renders');
+  ok(d(jim).getElementById('budBody').textContent.includes('26/27'), 'organisation overview renders');
+  nik.showModule('budget'); await sleep(250);
+  ok(d(nik).querySelectorAll('#budTabs button').length===4, 'editor sees 4 tabs (hidden panel gone)');
+  ok(!d(nik).getElementById('budTabs').textContent.includes('Budget holder'), 'hidden tab label absent for editor');
+  ok(d(nik).getElementById('budAdmin').innerHTML==='', 'no admin toolbar for editor');
+  // front-end unhide via the admin toggle
+  await jim.toggleBudPanel('budget.holder'); await sleep(250);
+  const nb2 = await (await apiAs(NIK,'GET','/api/budget')).json();
+  ok(Object.keys(nb2.panels).length===5, 'front-end unhide toggle restores the panel for everyone');
+
+  // restore semantics: budget data IS restored, panel visibility is NOT
+  await apiAs(JIM,'PUT','/api/panels',{panels:{hidden:['budget.health']}});
+  await sleep(5);
+  const snapB = (await (await apiAs(JIM,'POST','/api/snapshot',{})).json()).snapshot.ts;
+  await apiAs(JIM,'PUT','/api/panels',{panels:{hidden:[]}});                       // unhide after the snapshot
+  ok((await apiAs(JIM,'DELETE','/api/budget')).status===200, 'admin can remove budget data');
+  ok((await state(NIK)).budget.present===false, 'budget gone after delete');
+  await sleep(5);
+  ok((await apiAs(JIM,'POST','/api/snapshot/'+encodeURIComponent(snapB)+'/restore',{})).status===200, 'restore succeeds');
+  const nb3 = await (await apiAs(NIK,'GET','/api/budget')).json();
+  ok(nb3.present===true && Object.keys(nb3.panels).length===5,
+    'restore brings budget data back AND keeps current panel visibility (health not re-hidden)');
 }
 
 

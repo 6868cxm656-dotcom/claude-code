@@ -30,7 +30,7 @@ smart, busy and non-technical. Every design choice follows from that.
 | Server code | `db-app/worker.js` (~500 lines) | routing + D1 I/O + JWT verification + snapshots + budget panels |
 | Budget data pipeline | `budget-dashboard/` on branch `claude/budget-dashboard-design-h2ngl8` | `build.py` turns the budget workbook + Xero variance report into `dashboard.html`; import that file in-app |
 | Business rules | `db-app/logic.mjs` (~200 lines) | **pure functions, no I/O** — this is the file that matters |
-| Front-end | `db-app/public/index.html` (~2,300 lines, one file, no build step) | find sections by the `/* ============ NAME ============ */` banners |
+| Front-end | `db-app/public/index.html` (~3,100 lines, one file, no build step) | find sections by the `/* ============ NAME ============ */` banners |
 | Seed data | `db-app/seed.mjs` (generated; single source of truth for baselines) | |
 | Tests | `db-app/tests/` — `cd db-app/tests && npm i && npm test` | 150 end-to-end checks, jsdom front-end vs real worker vs mock D1 |
 | Offline backup copy | `risk-taxonomy/tcf-risk-register.html` on branch `claude/risk-taxonomy-v1alvk` | read-only viewer; sync it after front-end changes (see §5) |
@@ -158,6 +158,13 @@ the suite is why a 2,300-line single file has stayed changeable.
   index.html (`const SOAP`, `computePriorities`). The SOAP is draft v7 —
   when the Board approves final wording, edit the constant. The `[X]%`
   measures render as "target TBC" until milestone M19 resolves them.
+- **The retro theme is cosmetic only.** The 80s "Mission Control" look
+  (default) is a CSS layer scoped entirely under `html[data-theme="retro"]`,
+  with a per-browser "classic" opt-out (`localStorage` key `tcfTheme`, 🕹
+  button in the header) and a boot-screen loading overlay (min ~800ms hold —
+  the e2e harness waits 1300ms after opening a window). Printing always
+  reverts to classic so committee packs stay boardroom-clean. No logic lives
+  in the theme; delete the retro CSS block and the app still works.
 - **The repo is a fork of `claude-code`** with unrelated content (games,
   plugins) on `main`. Ignore `main`. The app never lived there.
 

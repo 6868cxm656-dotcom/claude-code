@@ -38,7 +38,7 @@ const state = async email => (await (await worker.fetch(new Request('https://tcf
 
 const JIM='jim.riddiford@churchillfellowship.org', NIK='nikesh.patel@churchillfellowship.org';
 const jim = browser(JIM), nik = browser(NIK);
-await sleep(350);
+await sleep(1300);   // the retro boot screen deliberately holds ~800ms before clearing
 const d=w=>w.document;
 
 // --- drift check: offline baseline literal === seed ---
@@ -521,6 +521,21 @@ import { SEED_MILESTONES } from '../seed.mjs';
   ok((await api(JIM,'GET','/api/state')).status===200, 'header fallback works again after disabling');
 
   globalThis.fetch = realFetch;
+}
+
+// --- retro theme + boot screen ---
+{
+  ok(jim.document.documentElement.dataset.theme==='retro', 'retro theme is the default');
+  ok(d(jim).getElementById('bootLog').textContent.includes('ALL SYSTEMS NOMINAL'), 'boot sequence log completed');
+  ok(d(jim).getElementById('bootBarFill').style.width==='100%', 'boot progress bar filled');
+  ok(d(jim).getElementById('loading').style.display==='none', 'boot screen cleared after hold');
+  ok(/T-MINUS \d+ DAYS? TO SOAP LAUNCH|MISSION DAY \d+/.test(d(jim).getElementById('brandSub').textContent), 'mission clock in header');
+  jim.toggleTheme();
+  ok(jim.document.documentElement.dataset.theme==='classic', 'toggle switches to classic');
+  ok(jim.localStorage.getItem('tcfTheme')==='classic', 'theme choice persists per browser');
+  jim.toggleTheme();
+  ok(jim.document.documentElement.dataset.theme==='retro' && d(jim).getElementById('themeBtn').textContent.includes('RETRO: ON'),
+    'toggle back to retro; button reflects state');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

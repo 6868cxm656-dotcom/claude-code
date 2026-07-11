@@ -301,6 +301,130 @@
   .pending-banner{background:#fff8e1;border:1px solid #f0d98a;color:#7a5d00;border-radius:9px;padding:9px 12px;font-size:12.5px;font-weight:600}
 
   footer{max-width:1500px;margin:0 auto;padding:0 28px 36px;color:var(--muted);font-size:12px}
+
+  /* ============ RETRO THEME — 80s MISSION CONTROL ============
+     Default look. "Classic" is one click away (🕹 button, saved per browser).
+     Everything scoped to html[data-theme="retro"]; printing always reverts to
+     classic (committee packs must stay boardroom-clean). */
+  html[data-theme="retro"]{
+    --red:#ff2e1f; --red-dark:#8f0e06; --red-mid:#ff7b6f; --red-pale:#4a120d;
+    --ink:#c8f7d8; --muted:#6fbf8f; --line:#173a52; --bg:#050a12; --card:#0a1424;
+    --low:#39ff88; --mod:#ffd23b; --high:#ffa02e; --sev:#ff5252;
+    --radius:3px; --shadow:0 0 0 1px #10314a,0 0 14px rgba(46,230,255,.07);
+  }
+  html[data-theme="retro"] body{
+    font-family:"Courier New",ui-monospace,Menlo,Consolas,monospace;
+    background:
+      radial-gradient(1px 1px at 12% 22%, rgba(255,255,255,.55) 50%, transparent 51%),
+      radial-gradient(1px 1px at 68% 8%, rgba(255,255,255,.4) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 32% 76%, rgba(180,230,255,.5) 50%, transparent 51%),
+      radial-gradient(1px 1px at 84% 55%, rgba(255,255,255,.35) 50%, transparent 51%),
+      radial-gradient(1px 1px at 48% 38%, rgba(255,255,255,.28) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 92% 88%, rgba(180,230,255,.4) 50%, transparent 51%),
+      #050a12;
+    background-size:340px 340px,420px 420px,520px 520px,380px 380px,300px 300px,460px 460px,auto;
+  }
+  /* CRT scanlines + tube vignette */
+  html[data-theme="retro"] body::after{
+    content:""; position:fixed; inset:0; z-index:9998; pointer-events:none;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.35) 100%);
+  }
+  /* header: night-ops console with an 80s sunset stripe */
+  html[data-theme="retro"] header{
+    background:linear-gradient(180deg,#0b1020,#0a0d18);
+    border-bottom:2px solid #ff2e1f;
+    box-shadow:0 2px 0 #ffa02e,0 4px 0 #ffd23b,0 8px 24px rgba(255,46,31,.25);
+  }
+  html[data-theme="retro"] .brand h1{text-transform:uppercase;letter-spacing:.14em;font-size:19px;color:#e6fbff;
+    text-shadow:0 0 6px rgba(46,230,255,.9),0 0 18px rgba(46,230,255,.45)}
+  html[data-theme="retro"] .brand .sub{color:#6fdff2;text-transform:uppercase;letter-spacing:.08em;font-size:11px;opacity:1;text-shadow:0 0 8px rgba(46,230,255,.35)}
+  html[data-theme="retro"] .chip{background:transparent;border:1px solid #ffd23b;color:#ffd23b;border-radius:2px;text-shadow:0 0 6px rgba(255,210,59,.6)}
+  html[data-theme="retro"] #whoami{color:#bff3ff;text-shadow:0 0 6px rgba(46,230,255,.4)}
+  html[data-theme="retro"] nav button{color:#6fbf8f;text-transform:uppercase;letter-spacing:.08em;font-size:12.5px;border-radius:0}
+  html[data-theme="retro"] nav button.active{background:var(--bg);color:#39ff88;text-shadow:0 0 8px rgba(57,255,136,.7);box-shadow:inset 0 2px 0 #39ff88}
+  html[data-theme="retro"] .subnav button{border-radius:0;text-transform:uppercase;font-size:11.5px;letter-spacing:.06em}
+  html[data-theme="retro"] .subnav button.active{background:var(--card);color:#39ff88;box-shadow:inset 0 2px 0 #39ff88}
+  /* controls */
+  html[data-theme="retro"] button{border-radius:2px}
+  html[data-theme="retro"] .btn-ghost{background:rgba(46,230,255,.08);border:1px solid #2ee6ff;color:#bff3ff;text-shadow:0 0 6px rgba(46,230,255,.5)}
+  html[data-theme="retro"] .btn-primary{background:#ff2e1f;color:#fff;box-shadow:0 0 10px rgba(255,46,31,.55)}
+  html[data-theme="retro"] .btn-soft{background:#122036;color:var(--ink);border:1px solid var(--line)}
+  html[data-theme="retro"] .btn-danger{background:transparent;border:1px solid var(--sev);color:var(--sev)}
+  html[data-theme="retro"] select,html[data-theme="retro"] input[type=text],html[data-theme="retro"] input[type=date],html[data-theme="retro"] input[type=month],html[data-theme="retro"] textarea,
+  html[data-theme="retro"] .fld input,html[data-theme="retro"] .fld select,html[data-theme="retro"] .fld textarea{background:#0a1322;color:var(--ink);border-color:var(--line)}
+  html[data-theme="retro"] .fld input:disabled,html[data-theme="retro"] .fld select:disabled,html[data-theme="retro"] .fld textarea:disabled{background:#0e1526;color:#5b7a6a}
+  html[data-theme="retro"] .head-controls select{background:#0a1322;border:1px solid #2ee6ff;color:#bff3ff}
+  html[data-theme="retro"] .picker .nums button{background:#122036;color:var(--ink)}
+  html[data-theme="retro"] .toggle{background:#0a1322;color:var(--muted)}
+  html[data-theme="retro"] .toggle.on{background:#241012;border-color:var(--red);color:#ff9d94}
+  html[data-theme="retro"] .viewtoggle button{background:#122036;color:var(--muted)}
+  html[data-theme="retro"] .viewtoggle button.active{background:#ff2e1f;color:#fff;box-shadow:0 0 10px rgba(255,46,31,.5)}
+  /* surfaces */
+  html[data-theme="retro"] .card,html[data-theme="retro"] .kpi,html[data-theme="retro"] .soap-card,html[data-theme="retro"] .enabler-tile,html[data-theme="retro"] .ms-row,html[data-theme="retro"] .tl-wrap,html[data-theme="retro"] .tax-cat{border:1px solid var(--line)}
+  html[data-theme="retro"] .card h3{color:#6fdff2;text-transform:uppercase;letter-spacing:.09em;font-size:12.5px}
+  html[data-theme="retro"] .kpi .n{text-shadow:0 0 10px rgba(57,255,136,.35);color:#e9fff2}
+  html[data-theme="retro"] .kpi .t{text-transform:uppercase;letter-spacing:.05em;font-size:10.5px}
+  html[data-theme="retro"] thead th{background:#0e1c30;color:#6fdff2}
+  html[data-theme="retro"] tbody tr:hover td{background:#0f2138}
+  html[data-theme="retro"] .tax-area:hover{background:#0f2138}
+  html[data-theme="retro"] .breach-list .item:hover{background:#0f2138;border-color:#2ee6ff}
+  html[data-theme="retro"] .bars .track,html[data-theme="retro"] .pbar{background:#0e1c30}
+  html[data-theme="retro"] .modal{background:var(--card);border:1px solid #2ee6ff;border-radius:4px;box-shadow:0 0 0 1px #10314a,0 0 40px rgba(46,230,255,.25)}
+  html[data-theme="retro"] .overlay{background:rgba(2,6,12,.72)}
+  html[data-theme="retro"] .step,html[data-theme="retro"] details.rubric-fold,html[data-theme="retro"] .hist,html[data-theme="retro"] .prop-note{background:#0a1322}
+  html[data-theme="retro"] .step .cad,html[data-theme="retro"] .due{background:#241012;color:#ff9d94}
+  html[data-theme="retro"] .prio .why{color:var(--muted)}
+  html[data-theme="retro"] .appetite-cmp.bad{background:#2a0705}
+  html[data-theme="retro"] .navbadge{background:#ffd23b;color:#3a2a00}
+  html[data-theme="retro"] .tag-draft,html[data-theme="retro"] .tbc,html[data-theme="retro"] .tag-prop{background:#2a2205;color:#ffd23b}
+  html[data-theme="retro"] .tag-ai{background:#1c1030 !important;color:#c39bff !important}
+  html[data-theme="retro"] .tag-flag{background:#2a0705;color:#ff9d94}
+  html[data-theme="retro"] tr.is-hidden td{background:#141024}
+  html[data-theme="retro"] .pending-banner{background:#221a02;border-color:#5c4a08;color:#ffd23b}
+  html[data-theme="retro"] .toast{background:#04121f;border:1px solid #39ff88;color:#c9ffdf;border-radius:2px;box-shadow:0 0 18px rgba(57,255,136,.35);text-transform:uppercase;font-size:12px;letter-spacing:.04em}
+  html[data-theme="retro"] #apiBanner{background:#221a02;color:#ffd23b;border-bottom-color:#5c4a08}
+  html[data-theme="retro"] #seedBanner{background:#2a0705;color:#ff9d94;border-bottom-color:#5c1410}
+  html[data-theme="retro"] #vaBanner{background:#140a28;color:#c39bff;border-bottom-color:#33206b}
+  /* budget module on dark */
+  html[data-theme="retro"] .bchip.good{background:#04240f;color:#39ff88}
+  html[data-theme="retro"] .bchip.warn{background:#2a2205;color:#ffd23b}
+  html[data-theme="retro"] .bchip.serious{background:#2a1505;color:#ffa02e}
+  html[data-theme="retro"] .bchip.critical{background:#2a0705;color:#ff5252}
+  html[data-theme="retro"] .bchip.under{background:#04182a;color:#4dc9ff}
+  html[data-theme="retro"] .bud-callout{background:#2a2205;color:var(--ink)}
+  html[data-theme="retro"] .bud-callout.block{background:#2a0705}
+  html[data-theme="retro"] #view-budget .acthead td,html[data-theme="retro"] .acthead td{background:#0e1c30}
+  html[data-theme="retro"] .bud-comment{background:#0a1322;color:var(--ink)}
+  html[data-theme="retro"] .bud-showmore{color:#4dc9ff}
+  /* footer: live console cursor */
+  html[data-theme="retro"] footer{color:#3f8f66}
+  html[data-theme="retro"] #footNote::after{content:"▊";margin-left:6px;color:#39ff88;animation:tcfblink 1.1s steps(1) infinite}
+  @keyframes tcfblink{50%{opacity:0}}
+  /* boot screen (shows in both themes while loading) */
+  #loading .boot{width:min(680px,92vw);background:#04060d;border:1px solid #2ee6ff;border-radius:4px;box-shadow:0 0 0 1px #10314a,0 0 50px rgba(46,230,255,.25);padding:26px 30px;font-family:"Courier New",ui-monospace,Menlo,monospace;color:#c8f7d8}
+  #loading .boot-logo{color:#2ee6ff;text-shadow:0 0 8px rgba(46,230,255,.8);font-size:12px;line-height:1.15;margin:0 0 14px;overflow:hidden}
+  #loading .boot-log{white-space:pre-wrap;font-size:12px;color:#39ff88;text-shadow:0 0 6px rgba(57,255,136,.5);min-height:118px}
+  #loading .boot-bar{height:14px;border:1px solid #39ff88;border-radius:2px;margin:12px 0 10px;padding:2px;background:#04121f}
+  #loading #bootBarFill{height:100%;width:0;background:repeating-linear-gradient(90deg,#39ff88 0 10px,#04121f 10px 14px);transition:width .25s;box-shadow:0 0 10px rgba(57,255,136,.6)}
+  #loading .boot-hint{font-size:10.5px;letter-spacing:.12em;color:#6fbf8f}
+  #loading .boot-cursor{animation:tcfblink 1s steps(1) infinite;color:#39ff88;margin-left:4px}
+  @media (prefers-reduced-motion: reduce){
+    html[data-theme="retro"] #footNote::after,#loading .boot-cursor{animation:none}
+  }
+  @media print{
+    html[data-theme="retro"]{--red:#DA291C;--red-dark:#A81B12;--red-mid:#E0837B;--red-pale:#F5C2BC;--ink:#1d1d1f;--muted:#6b6b70;--line:#e6e2e0;--bg:#faf8f7;--card:#ffffff;--low:#2E7D32;--mod:#F2B705;--high:#EF6C00;--sev:#C62828;--radius:14px;--shadow:none}
+    html[data-theme="retro"] body{background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif}
+    html[data-theme="retro"] body::after{display:none}
+    html[data-theme="retro"] header{background:none;border-bottom:1px solid #e6e2e0;box-shadow:none}
+    html[data-theme="retro"] .brand h1{color:#1d1d1f;text-shadow:none;text-transform:none;letter-spacing:-.02em}
+    html[data-theme="retro"] .brand .sub{color:#6b6b70;text-shadow:none;text-transform:none}
+    html[data-theme="retro"] thead th{background:#f6f2f1;color:#6b6b70}
+    html[data-theme="retro"] .card h3{color:#1d1d1f;text-transform:none;letter-spacing:0;font-size:15px}
+    html[data-theme="retro"] #footNote::after{content:none}
+  }
+
   @media print{
     header .head-controls,nav,.filters,.no-print,#addBtn,footer,.overlay{display:none!important}
     .view{display:none!important}.view.active{display:block!important}
@@ -322,6 +446,9 @@
 <div id="vaBanner" style="display:none;background:#ede7f6;color:#4527a0;padding:10px 28px;font-weight:600;border-bottom:1px solid #d1c4e9"></div>
 <div id="seedBanner" style="display:none;background:#fdecea;color:#A81B12;padding:10px 28px;font-weight:600;border-bottom:1px solid #f0b9b4"></div>
 <script>
+// Theme is applied before the header parses so there is no flash of the wrong look.
+try{ document.documentElement.dataset.theme = (localStorage.getItem("tcfTheme")==="classic") ? "classic" : "retro"; }
+catch(e){ document.documentElement.dataset.theme = "retro"; }
 window.onerror = function(msg, src, line){
   var d = document.getElementById("jsError");
   if(d){
@@ -336,10 +463,11 @@ window.onerror = function(msg, src, line){
   <div class="head-top">
     <div class="brand">
       <h1>TCF Mission Control <span class="chip">DRAFT — for SLT discussion</span></h1>
-      <div class="sub">The Churchill Fellowship · strategy · risk · milestones — SOAP 2026/27–2028/29</div>
+      <div class="sub" id="brandSub">The Churchill Fellowship · strategy · risk · milestones — SOAP 2026/27–2028/29</div>
     </div>
     <div class="head-controls">
       <span id="whoami" style="font-size:12.5px;font-weight:700"></span>
+      <button class="btn-ghost" id="themeBtn" onclick="toggleTheme()" title="Switch between the retro and classic look (saved on this device)">🕹</button>
       <select id="viewAsSel" style="display:none" onchange="setViewAs(this.value)"></select>
       <button class="btn-ghost" id="settingsBtn" style="display:none" onclick="openSettings()">⚙ Meetings &amp; contacts</button>
       <button class="btn-ghost" onclick="exportJSON(false)">Export all (JSON)</button>
@@ -767,8 +895,20 @@ window.onerror = function(msg, src, line){
     </div></div>
   </div>
 </div>
-<div id="loading" style="display:none;position:fixed;inset:0;background:rgba(250,248,247,.85);z-index:80;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.15);padding:22px 30px;font-weight:700">Loading the shared register…</div>
+<div id="loading" style="display:none;position:fixed;inset:0;background:#04060d;z-index:80;align-items:center;justify-content:center">
+  <div class="boot" role="status" aria-label="Loading the shared register">
+    <pre class="boot-logo" aria-hidden="true">
+ ▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄
+ █▄▄ ▄▄█ █ ▄▄▄▄█ █ ▄▄▄▄█
+   █ █   █ █     █ █▄▄▄
+   █ █   █ █     █ ▄▄▄█
+   █ █   █ █▄▄▄▄ █ █
+   █▄█   █▄▄▄▄▄█ █▄█
+ M I S S I O N  C O N T R O L</pre>
+    <div id="bootLog" class="boot-log"></div>
+    <div class="boot-bar" aria-hidden="true"><div id="bootBarFill"></div></div>
+    <div class="boot-hint">© 2026 THE CHURCHILL FELLOWSHIP · INSERT COIN TO CONTINUE<span class="boot-cursor">▊</span></div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -846,7 +986,7 @@ const BASELINE_MILESTONES = [{"id":"M01","soap":"A1","owner":"Nikesh","com":"Boa
 /* BASELINE-MS:END */
 
 /* ============ STATE ============ */
-const APP_VERSION = "v2026-07-11a";
+const APP_VERSION = "v2026-07-11b";
 const TODAY = new Date().toISOString().slice(0,10);
 const PEOPLE = ["Julia","Jim","Nikesh","Jacqui","Chris"];
 const ADMINS = ["Jim","Julia"];                       // access-all-areas
@@ -2909,6 +3049,60 @@ populateFilters();
 renderRubric("rubricOverview");
 renderRubric("rubricModal");
 
+/* ============ RETRO THEME + BOOT SEQUENCE ============ */
+function toggleTheme(){
+  const next = document.documentElement.dataset.theme === "retro" ? "classic" : "retro";
+  document.documentElement.dataset.theme = next;
+  try{ localStorage.setItem("tcfTheme", next); }catch(e){}
+  updateThemeBtn();
+  toast(next === "retro" ? "🕹 RETRO MODE ENGAGED" : "Classic mode restored — the 80s will wait.");
+}
+function updateThemeBtn(){
+  const b = document.getElementById("themeBtn");
+  if(b) b.textContent = document.documentElement.dataset.theme === "retro" ? "🕹 RETRO: ON" : "🕹 Retro mode";
+}
+// Mission clock in the header: countdown to SOAP launch (1 Oct 2026), then mission days.
+function missionClock(){
+  const el = document.getElementById("brandSub");
+  if(!el) return;
+  const days = Math.round((Date.parse("2026-10-01") - Date.parse(TODAY)) / 86400000);
+  el.textContent = days > 0
+    ? `The Churchill Fellowship · SOAP 2026/27–2028/29 · T-MINUS ${days} DAY${days===1?"":"S"} TO SOAP LAUNCH`
+    : `The Churchill Fellowship · SOAP 2026/27–2028/29 · MISSION DAY ${1 - days}`;
+}
+let bootTimer = null, bootState = null;
+function bootPrint(s){
+  s.log.textContent += "> " + s.lines[s.i] + "\n";
+  s.i++;
+  if(s.bar) s.bar.style.width = Math.round(8 + 88 * s.i / s.lines.length) + "%";
+}
+function startBoot(){
+  const log = document.getElementById("bootLog"), bar = document.getElementById("bootBarFill");
+  if(!log) return;
+  bootState = {log, bar, i:0, lines:[
+    "TCF MISSION CONTROL OS v2026.7 — BOOT SEQUENCE INITIATED",
+    "CHECKING CRT PHOSPHOR ............... OK",
+    "CALIBRATING RISK RADAR .............. OK",
+    "ESTABLISHING UPLINK TO SHARED DATABASE",
+    "VERIFYING CREW CREDENTIALS .......... OK",
+    "LOADING TELEMETRY: RISKS · MILESTONES · BUDGET",
+    "ALL SYSTEMS NOMINAL — WELCOME ABOARD, COMMANDER"
+  ]};
+  log.textContent = ""; if(bar) bar.style.width = "4%";
+  bootTimer = setInterval(()=>{
+    bootPrint(bootState);
+    if(bootState.i >= bootState.lines.length){ clearInterval(bootTimer); bootTimer = null; }
+  }, 140);
+}
+function stopBoot(){
+  if(bootTimer){ clearInterval(bootTimer); bootTimer = null; }
+  if(bootState){
+    while(bootState.i < bootState.lines.length) bootPrint(bootState);  // finish the log on fast loads
+    if(bootState.bar) bootState.bar.style.width = "100%";
+    bootState = null;
+  }
+}
+
 let nagShown = false;
 function maybeNagApprovals(){
   if(nagShown || !isAdmin()) return;
@@ -2918,12 +3112,20 @@ function maybeNagApprovals(){
   toast(`⏳ ${stale.length} proposal${stale.length===1?" has":"s have"} been waiting over 48 hours — see the Approvals tab.`);
 }
 async function init(){
+  updateThemeBtn();
+  missionClock();
   if(window.fetch && location.protocol.startsWith("http")){
     apiMode = true;
+    const t0 = Date.now();
     document.getElementById("loading").style.display = "flex";
+    startBoot();
     window.addEventListener("focus", ()=>refreshState());
     setInterval(()=>refreshState(), 45000);
     const okFirst = await refreshState({force:true});
+    // hold the boot screen just long enough to be seen (min 800ms on fast loads)
+    const hold = 800 - (Date.now() - t0);
+    if(hold > 0) await new Promise(r=>setTimeout(r, hold));
+    stopBoot();
     document.getElementById("loading").style.display = "none";
     if(okFirst) maybeNagApprovals();
     else {
@@ -2939,7 +3141,7 @@ async function init(){
   document.getElementById("addBtn").style.display = "none";
   renderAll();
 }
-init();init();
+init();
 </script>
 </body>
 </html>

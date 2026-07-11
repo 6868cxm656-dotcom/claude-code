@@ -529,7 +529,12 @@ import { SEED_MILESTONES } from '../seed.mjs';
   ok(d(jim).getElementById('bootLog').textContent.includes('ALL SYSTEMS NOMINAL'), 'boot sequence log completed');
   ok(d(jim).getElementById('bootBarFill').style.width==='100%', 'boot progress bar filled');
   ok(d(jim).getElementById('loading').style.display==='none', 'boot screen cleared after hold');
-  ok(/T-MINUS \d+ DAYS? TO SOAP LAUNCH|MISSION DAY \d+/.test(d(jim).getElementById('brandSub').textContent), 'mission clock in header');
+  const cd = d(jim).getElementById('countdown').textContent;
+  ok((/T-MINUS/.test(cd) && /days/i.test(cd)) || /DAY \d+/.test(cd), 'launch countdown rendered in the header (every screen)');
+  if(/T-MINUS/.test(cd)){
+    await sleep(1100);
+    ok(d(jim).getElementById('countdown').textContent !== cd, 'countdown ticks live (seconds advance)');
+  }
   jim.toggleTheme();
   ok(jim.document.documentElement.dataset.theme==='classic', 'toggle switches to classic');
   ok(jim.localStorage.getItem('tcfTheme')==='classic', 'theme choice persists per browser');

@@ -535,6 +535,13 @@ import { SEED_MILESTONES } from '../seed.mjs';
     await sleep(1100);
     ok(d(jim).getElementById('countdown').textContent !== cd, 'countdown ticks live (seconds advance)');
   }
+  // post-launch maths, testable today: DAY N + % of the 3-year period used
+  ok(jim.soapProgress(Date.parse('2026-09-30T12:00:00')).phase==='pre', 'soapProgress: pre-launch phase');
+  const day1 = jim.soapProgress(Date.parse('2026-10-01T00:00:00'));
+  ok(day1.phase==='live' && day1.day===1 && day1.pct<0.01, 'soapProgress: launch day is DAY 1 at ~0%');
+  const mid = jim.soapProgress(Date.parse('2028-04-01T00:00:00'));
+  ok(Math.abs(mid.pct - 50) < 1.5, 'soapProgress: spring 2028 ≈ 50% of the period ('+mid.pct.toFixed(1)+'%)');
+  ok(jim.soapProgress(Date.parse('2030-01-01T00:00:00')).pct===100, 'soapProgress: capped at 100% after 30 Sep 2029');
   jim.toggleTheme();
   ok(jim.document.documentElement.dataset.theme==='classic', 'toggle switches to classic');
   ok(jim.localStorage.getItem('tcfTheme')==='classic', 'theme choice persists per browser');

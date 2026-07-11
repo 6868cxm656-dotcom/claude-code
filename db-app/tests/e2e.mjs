@@ -61,10 +61,10 @@ ok((await state(JIM)).risks.find(r=>r.id==='R05').hidden===true, 'hide click per
 ok(!(await state(NIK)).risks.find(r=>r.id==='R05'), 'hidden R05 stripped for Nikesh');
 
 // --- leak checks ---
-jim.showView('pack'); jim.renderPack();
-d(jim).getElementById('pCom').value='Board'; d(jim).getElementById('pSince').value='2026-03-26'; jim.renderPack(true);
+jim.showView('pack'); await jim.renderPack();
+d(jim).getElementById('pCom').value='Board'; d(jim).getElementById('pSince').value='2026-03-26'; await jim.renderPack(true);
 ok(!d(jim).getElementById('packBody').textContent.includes('R41'), 'pack excludes hidden');
-d(jim).getElementById('chgFrom').value='2026-06-01'; d(jim).getElementById('chgTo').value='2026-06-30'; jim.renderChanges();
+d(jim).getElementById('chgFrom').value='2026-06-01'; d(jim).getElementById('chgTo').value='2026-06-30'; await jim.renderChanges();
 const chg = d(jim).getElementById('chgNew').textContent + d(jim).getElementById('chgChanged').textContent;
 ok(!chg.includes('R41') && !chg.includes('R05'), 'change report excludes hidden');
 jim.openModal('R05'); await jim.toggleHidden(); await sleep(250);   // un-hide for later tests
@@ -98,6 +98,7 @@ ok(!(await state(JIM)).risks.find(r=>r.id==='R08').pending, 'reject clears propo
 
 // --- failure handling ---
 jim.openModal('R36');
+await jim.ensureHistory(); await sleep(30);   // let the modal's background history fetch settle first
 jim.__failFetch = true;
 d(jim).getElementById('mHide').dispatchEvent(new jim.Event('click',{bubbles:true})); await sleep(200);
 ok(d(jim).getElementById('apiBanner').style.display==='', 'banner shown on network failure');
@@ -173,8 +174,8 @@ import { SEED_MILESTONES } from '../seed.mjs';
   jim.closeMilestone();
 
   // pack includes milestones section
-  jim.showModule('pack'); jim.renderPack();
-  d(jim).getElementById('pCom').value='Board'; jim.renderPack(true);
+  jim.showModule('pack'); await jim.renderPack();
+  d(jim).getElementById('pCom').value='Board'; await jim.renderPack(true);
   const packTxt = d(jim).getElementById('packBody').textContent;
   ok(packTxt.includes('Milestones') && packTxt.includes('M15'), 'Board pack includes milestones');
 
@@ -293,7 +294,7 @@ import { SEED_MILESTONES } from '../seed.mjs';
   jim.showModule('access');
   ok(d(jim).querySelectorAll('#accUsers tr').length>=5, 'access users table renders');
   ok(d(jim).querySelectorAll('#accCats .enabler-tile').length===8, '8 ownership tiles');
-  ok(d(jim).querySelectorAll('#accMatrix tbody tr').length===12, 'capability matrix 12 rows');
+  ok(d(jim).querySelectorAll('#accMatrix tbody tr').length===13, 'capability matrix 13 rows');
 }
 
 
@@ -522,6 +523,89 @@ import { SEED_MILESTONES } from '../seed.mjs';
 
   globalThis.fetch = realFetch;
 }
+
+// --- performance + concurrency hardening: rev stamps, on-demand history, 409s, admin log, size caps ---
+{
+  const apiJ = (method, path, body) => worker.fetch(new Request('https://tcf.example'+path,
+    {method, headers:{'Cf-Access-Authenticated-User-Email':JIM,'content-type':'application/json'},
+     body: body?JSON.stringify(body):undefined}), env);
+  const apiN = (method, path, body) => worker.fetch(new Request('https://tcf.example'+path,
+    {method, headers:{'Cf-Access-Authenticated-User-Email':NIK,'content-type':'application/json'},
+     body: body?JSON.stringify(body):undefined}), env);
+
+  // rev stamp + unchanged shortcut
+  const s1 = await (await apiJ('GET','/api/state')).json();
+  ok(typeof s1.rev==='string' && s1.rev.length>0, 'state carries a revision stamp');
+  const un = await (await apiJ('GET','/api/state?rev='+encodeURIComponent(s1.rev))).json();
+  ok(un.unchanged===true && un.rev===s1.rev && un.risks===undefined, 'matching rev gets a tiny unchanged reply');
+  ok((await apiJ('POST','/api/risk/R36/flag',{note:'rev test'})).status===200, 'write succeeds');
+  const s2 = await (await apiJ('GET','/api/state?rev='+encodeURIComponent(s1.rev))).json();
+  ok(s2.unchanged===undefined && s2.rev !== s1.rev && Array.isArray(s2.risks), 'a write bumps the rev and reopens the full payload');
+  await apiJ('POST','/api/risk/R36/clearflag',{});
+
+  // histories are out of the poll, served on demand, hidden-stripped
+  const s3 = await (await apiJ('GET','/api/state')).json();
+  ok(s3.risks.every(r=>r.history===undefined) && s3.deleted.every(r=>r.history===undefined), 'state payload carries no edit histories');
+  const hJ = await (await apiJ('GET','/api/history')).json();
+  const hN = await (await apiN('GET','/api/history')).json();
+  ok(Array.isArray(hJ.risks['R07']) && hJ.risks['R07'].length>0, 'history endpoint serves per-risk histories');
+  ok('R41' in hJ.risks, 'admin history includes the hidden risk');
+  ok(!('R41' in hN.risks) && !JSON.stringify(hN).includes('R41'), 'hidden-risk history never leaves the server for non-admins');
+
+  // client: unchanged polls skip re-rendering entirely
+  jim.closeModal(); await jim.refreshState({force:true}); await sleep(60);
+  const sentinel = d(jim).createElement('span'); sentinel.id = 'renderSentinel';
+  d(jim).getElementById('kpis').appendChild(sentinel);
+  await jim.refreshState(); await sleep(30);
+  ok(!!d(jim).getElementById('renderSentinel'), 'unchanged poll skips re-render (sentinel survives)');
+  await apiJ('POST','/api/risk/R36/flag',{note:'poke'});
+  await jim.refreshState(); await sleep(30);
+  ok(!d(jim).getElementById('renderSentinel'), 'changed poll re-renders (sentinel replaced)');
+  await apiJ('POST','/api/risk/R36/clearflag',{});
+
+  // client: modal history loads on demand
+  await jim.refreshState({force:true}); await sleep(30);
+  jim.openModal('R07'); await sleep(200);
+  const mh = d(jim).getElementById('mHistory').textContent;
+  ok(d(jim).querySelectorAll('#mHistory .h-item').length>=1 && !mh.includes('Loading'), 'risk modal history loads on demand');
+  jim.closeModal();
+
+  // optimistic concurrency on the admin surfaces
+  const cur = await (await apiJ('GET','/api/state')).json();
+  const users = cur.people.map(p=>({email:p.email, name:p.name, group:p.group}));
+  const accCfg = {users, catOwner:cur.catOwner};
+  ok((await apiJ('PUT','/api/access',{access:accCfg, baseUpdated:'2020-01-01T00:00:00Z'})).status===409, 'stale access save is a 409, not a silent overwrite');
+  const accNow = (cur.access && cur.access.updated) || null;
+  ok((await apiJ('PUT','/api/access',{access:accCfg, baseUpdated:accNow})).status===200, 'fresh access save succeeds');
+  ok((await apiJ('PUT','/api/panels',{panels:{hidden:[]}, baseUpdated:'2020-01-01T00:00:00Z'})).status===409, 'stale panels save is a 409');
+  ok((await apiJ('PUT','/api/settings',{settings:cur.settings, baseUpdated:'2020-01-01T00:00:00Z'})).status===409, 'stale settings save is a 409');
+  ok((await apiJ('PUT','/api/settings',{settings:cur.settings, baseUpdated:cur.settings.updated||null})).status===200, 'fresh settings save succeeds');
+
+  // admin activity log
+  ok((await apiN('GET','/api/adminlog')).status===403, 'admin log is admin-only');
+  const log = (await (await apiJ('GET','/api/adminlog')).json()).log;
+  const acts = log.map(e=>e.action);
+  ok(log.length>0 && acts.includes('restore') && acts.includes('budget-import') && acts.includes('panels'),
+    'admin log records restores, imports and panel changes ('+[...new Set(acts)].join(',')+')');
+  ok(log.every(e=>e.at && e.by), 'log entries carry who and when');
+
+  // body size cap + clean errors
+  const big = await worker.fetch(new Request('https://tcf.example/api/risk/R36/flag',
+    {method:'POST', headers:{'Cf-Access-Authenticated-User-Email':JIM,'content-type':'application/json'},
+     body:JSON.stringify({note:'x'.repeat(4_100_000)})}), env);
+  ok(big.status===413, 'oversized request body gets a polite 413 ('+big.status+')');
+
+  // change report + pack still reconstruct correctly from on-demand history
+  // (window starts after the baseline date, so edited risks count as "changed" not "added")
+  d(jim).getElementById('chgFrom').value='2026-06-20'; d(jim).getElementById('chgTo').value=new Date().toISOString().slice(0,10);
+  await jim.renderChanges();
+  ok(d(jim).getElementById('chgChanged').textContent.includes('R07'), 'change report reconstructs approved edit to R07 from fetched history');
+  // export remains a complete backup (histories reattached)
+  ok((await jim.ensureHistory())===true, 'ensureHistory resolves');
+  const r07 = (await (await apiJ('GET','/api/state')).json()).risks.find(r=>r.id==='R07');
+  ok(jim.histFor(r07, false).length>0, 'histFor supplies history for exports');
+}
+
 
 // --- retro theme + boot screen ---
 {

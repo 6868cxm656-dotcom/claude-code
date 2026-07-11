@@ -56,6 +56,9 @@ Cloudflare D1 database, behind staff-only Cloudflare Access.
 - `DELETE /api/risk/:id` — admin live; owner → deletion proposal
 - `POST /api/proposal/:id/approve` · `/reject` — admins only
 - `PUT /api/settings` — admins only
+- `GET /api/state?rev=…` — matching rev returns a tiny `{unchanged:true}`; histories excluded
+- `GET /api/history` — per-risk edit histories on demand (hidden risks stripped)
+- `GET /api/adminlog` — admins only (restores, imports, panel/access changes)
 - `GET /api/budget` — per-panel payloads; hidden panels stripped for non-admins
 - `POST /api/budget` · `DELETE /api/budget` — admins only (import / remove data)
 - `PUT /api/panels` — admins only (hide/unhide budget panels for everyone else)

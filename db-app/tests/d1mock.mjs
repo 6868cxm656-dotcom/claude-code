@@ -51,6 +51,11 @@ export function makeDB(){
   }
   function all(sql){
     sql=sql.replace(/\s+/g,' ').trim();
+    const kin = sql.match(/^SELECT k,v FROM settings WHERE k IN \(([^)]*)\)/i);
+    if(kin){
+      const keys = [...kin[1].matchAll(/'(\w+)'/g)].map(x=>x[1]);
+      return {results: keys.filter(k=>settings.has(k) && settings.get(k)!=='').map(k=>({k, v:settings.get(k)}))};
+    }
     if(/SELECT data FROM risks$/i.test(sql)) return {results:[...risks.values()].map(r=>({data:r.data}))};
     if(/SELECT data FROM milestones$/i.test(sql)) return {results:[...milestones.values()].map(r=>({data:r.data}))};
     if(/SELECT id FROM milestones$/i.test(sql)) return {results:[...milestones.keys()].map(id=>({id}))};

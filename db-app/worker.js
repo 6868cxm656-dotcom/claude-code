@@ -195,26 +195,60 @@ async function nextId(env){
   return "R" + String(n+1).padStart(2,"0");
 }
 
-async function loadAccess(env){
-  const row = await env.DB.prepare("SELECT v FROM settings WHERE k='access'").first();
-  return row ? JSON.parse(row.v) : null;
-}
-async function loadBudget(env){
-  const row = await env.DB.prepare("SELECT v FROM settings WHERE k='budget'").first();
-  return row ? JSON.parse(row.v) : null;
-}
-async function loadPanels(env){
-  const row = await env.DB.prepare("SELECT v FROM settings WHERE k='panels'").first();
-  return row ? JSON.parse(row.v) : {hidden:[]};
-}
-
-async function handleApi(req, env){
+// One-time (per isolate, per database) schema/seed check. Every ensure* is
+// idempotent, but re-running four of them cost ~6 D1 queries on every request.
+// A fresh isolate still passes through once, so an empty DB always self-heals.
+const initedDbs = new WeakSet();
+async function ensureAll(env){
+  if(initedDbs.has(env.DB)) return;
   await ensureInit(env);
   await ensureExtras(env);
   await ensureMilestones(env);
   await ensureSnapshots(env);
+  initedDbs.add(env.DB);
+}
+// All the small config blobs in ONE query instead of five separate lookups.
+async function loadSettingsMap(env){
+  const rows = await env.DB.prepare(
+    "SELECT k,v FROM settings WHERE k IN ('global','access','budget','panels','adminlog','seeded_at','rev')").all();
+  const m = {};
+  for(const r of (rows.results||[])) m[r.k] = r.v;
+  return {
+    global:   m.global   ? JSON.parse(m.global)   : {},
+    access:   m.access   ? JSON.parse(m.access)   : null,
+    budget:   m.budget   ? JSON.parse(m.budget)   : null,
+    panels:   m.panels   ? JSON.parse(m.panels)   : {hidden:[]},
+    adminlog: m.adminlog ? JSON.parse(m.adminlog) : [],
+    seededAt: m.seeded_at || null,
+    rev:      m.rev || "0"
+  };
+}
+// Append-only log of admin actions (restore, import, panel/access changes),
+// capped at the latest 200 entries. Deliberately NOT part of snapshots, so a
+// restore can never erase the record of the restore itself.
+async function logAdmin(env, smap, by, action, detail){
+  const log = (smap.adminlog||[]).concat([{at:new Date().toISOString(), by, action, detail:String(detail||"").slice(0,200)}]);
+  while(log.length > 200) log.shift();
+  await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('adminlog',?)").bind(JSON.stringify(log)).run();
+}
+// Opaque revision stamp, bumped after every successful write. Pollers that
+// present the current stamp get a ~60-byte "unchanged" reply instead of the
+// full state — the payload no longer grows with the edit history.
+async function bumpRev(env){
+  await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('rev',?)").bind(crypto.randomUUID()).run();
+}
+
+async function handleApi(req, env){
+  const res = await apiRoute(req, env);
+  if(req.method !== "GET" && res.status < 400) await bumpRev(env);
+  return res;
+}
+
+async function apiRoute(req, env){
+  await ensureAll(env);
+  const smap = await loadSettingsMap(env);
   // Apply the stored access config (or defaults) so every rule below uses it.
-  const accessCfg = await loadAccess(env);
+  const accessCfg = smap.access;
   applyAccessConfig(accessCfg);
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/,"");
@@ -229,10 +263,10 @@ async function handleApi(req, env){
   }
   const realRole = roleFor(email);
   // "View as": admins may preview another user's read view. Honoured ONLY on
-  // the read-only GETs (/api/state, /api/budget) — every write route keeps
-  // the real identity.
+  // the read-only GETs (/api/state, /api/budget, /api/history) — every write
+  // route keeps the real identity.
   let role = realRole, viewAs = null;
-  if((path==="/api/state" || path==="/api/budget") && req.method==="GET" && isAdmin(realRole)){
+  if((path==="/api/state" || path==="/api/budget" || path==="/api/history") && req.method==="GET" && isAdmin(realRole)){
     const va = url.searchParams.get("viewAs");
     if(va){
       const people = peopleFromConfig(accessCfg);
@@ -242,52 +276,74 @@ async function handleApi(req, env){
     }
   }
   const now = new Date().toISOString();
-  const body = req.method==="GET" ? {} : await req.json().catch(()=>({}));
+  // Parse the body with a hard size cap — a runaway upload gets a polite 413
+  // instead of burning CPU and dying somewhere deeper.
+  let body = {};
+  if(req.method !== "GET"){
+    const raw = await req.text().catch(()=> "");
+    if(raw.length > 4_000_000) return json({error:"That upload is too large (max ~4 MB)."}, 413);
+    try{ body = raw ? JSON.parse(raw) : {}; }catch(e){}
+  }
 
   // identity + state. Hidden risks are returned ONLY to admins (Jim/Julia);
   // everyone else never receives them, so they cannot be seen even via the API.
+  // Edit histories are NOT included (see /api/history) — the poll stays small.
   if(path==="/api/state" && req.method==="GET"){
+    if(url.searchParams.get("rev") === smap.rev)
+      return json({unchanged:true, rev:smap.rev});
     const rs = await env.DB.prepare("SELECT data FROM risks").all();
     const ds = await env.DB.prepare("SELECT data FROM deleted").all();
-    const st = await env.DB.prepare("SELECT v FROM settings WHERE k='global'").first();
     const ms = await env.DB.prepare("SELECT data FROM milestones").all();
+    const strip = o => { const {history, ...rest} = o; return rest; };
     let riskRows = (rs.results||[]).map(x=>JSON.parse(x.data));
     let delRows  = (ds.results||[]).map(x=>JSON.parse(x.data));
     if(!isAdmin(role)){ riskRows = riskRows.filter(r=>!r.hidden); delRows = delRows.filter(r=>!r.hidden); }
-    const budgetCfg = await loadBudget(env);
-    const panelsCfg = await loadPanels(env);
+    const budgetCfg = smap.budget, panelsCfg = smap.panels;
     const visiblePanels = budgetCfg ? Object.keys(budgetCfg.panels||{})
       .filter(p => isAdmin(role) || !(panelsCfg.hidden||[]).includes(p)).length : 0;
     return json({
-      risks: riskRows,
-      deleted: delRows,
+      rev: smap.rev,
+      risks: riskRows.map(strip),
+      deleted: delRows.map(strip),
       milestones: (ms.results||[]).map(x=>JSON.parse(x.data)),
-      settings: st ? JSON.parse(st.v) : {},
+      settings: smap.global,
       people: peopleFromConfig(accessCfg),                 // staff directory for dropdowns/emails
       catOwner: {...CAT_OWNER},                            // effective area ownership
       access: isAdmin(realRole) ? (accessCfg || null) : undefined,
       budget: {present: !!budgetCfg, visible: visiblePanels},   // payload itself comes from GET /api/budget
       panels: isAdmin(realRole) ? panelsCfg : undefined,
       security: {jwtEnforced},
-      seededAt: (await env.DB.prepare("SELECT v FROM settings WHERE k='seeded_at'").first() || {}).v || null,
+      seededAt: smap.seededAt,
       lastSnapshot: (await env.DB.prepare("SELECT MAX(ts) AS t FROM snapshots").first() || {}).t || null,
       me: {email, role, admin: isAdmin(role), realRole, realAdmin: isAdmin(realRole), viewAs}
     });
+  }
+
+  // Full edit histories, fetched on demand (risk modal, change report, packs,
+  // exports) with the same hidden-risk stripping as /api/state.
+  if(path==="/api/history" && req.method==="GET"){
+    const rs = await env.DB.prepare("SELECT data FROM risks").all();
+    const ds = await env.DB.prepare("SELECT data FROM deleted").all();
+    const out = {risks:{}, deleted:{}};
+    for(const x of (rs.results||[])){ const r = JSON.parse(x.data); if(r.hidden && !isAdmin(role)) continue; out.risks[r.id] = r.history||[]; }
+    for(const x of (ds.results||[])){ const r = JSON.parse(x.data); if(r.hidden && !isAdmin(role)) continue; out.deleted[r.id] = r.history||[]; }
+    return json({ok:true, rev:smap.rev, risks:out.risks, deleted:out.deleted});
   }
 
   // Budget module payload, fetched when the module opens (kept out of /api/state
   // to keep the 45s poll light). Hidden panels are stripped server-side for
   // non-admins — like hidden risks, their data never leaves the server.
   if(path==="/api/budget" && req.method==="GET"){
-    const budgetCfg = await loadBudget(env);
-    const panelsCfg = await loadPanels(env);
+    const budgetCfg = smap.budget, panelsCfg = smap.panels;
     if(!budgetCfg) return json({present:false, panels:{}, meta:null,
-      hidden: isAdmin(role) ? (panelsCfg.hidden||[]) : undefined});
+      hidden: isAdmin(role) ? (panelsCfg.hidden||[]) : undefined,
+      panelsUpdated: isAdmin(role) ? (panelsCfg.updated||null) : undefined});
     const out = {};
     for(const [p, payload] of Object.entries(budgetCfg.panels||{}))
       if(isAdmin(role) || !(panelsCfg.hidden||[]).includes(p)) out[p] = payload;
     return json({present:true, panels:out, meta:budgetCfg.meta||null,
-      hidden: isAdmin(role) ? (panelsCfg.hidden||[]) : undefined});
+      hidden: isAdmin(role) ? (panelsCfg.hidden||[]) : undefined,
+      panelsUpdated: isAdmin(role) ? (panelsCfg.updated||null) : undefined});
   }
   // Import (replace) the budget dataset — admins only. The raw payload is
   // transformed into five independent per-panel payloads at import time.
@@ -299,13 +355,18 @@ async function handleApi(req, env){
     catch(e){ return json({error:"Import failed: "+((e&&e.message)||e)+". Expected the built dashboard HTML or its JSON payloads."}, 400); }
     const meta = {imported:now, importedBy:realRole, label:String(raw.label||"").slice(0,120),
       lines:(raw.data||[]).length, varianceLines:(raw.variance||[]).length};
-    await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('budget',?)")
-      .bind(JSON.stringify({meta, panels})).run();
+    const blob = JSON.stringify({meta, panels});
+    if(blob.length > 1_800_000)
+      return json({error:"That import is too large to store ("+Math.round(blob.length/1024)+" KB against a ~1.8 MB limit) — trim long budget-line descriptions or split the file."}, 400);
+    await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('budget',?)").bind(blob).run();
+    await logAdmin(env, smap, realRole, "budget-import",
+      meta.lines+" lines"+(meta.varianceLines?", "+meta.varianceLines+" variance":"")+(meta.label?", from "+meta.label:""));
     return json({ok:true, meta});
   }
   if(path==="/api/budget" && req.method==="DELETE"){
     if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
     await env.DB.prepare("DELETE FROM settings WHERE k='budget'").run();
+    await logAdmin(env, smap, realRole, "budget-removed", "budget data cleared");
     return json({ok:true, deleted:true});
   }
 
@@ -409,7 +470,9 @@ async function handleApi(req, env){
   }
   if(path==="/api/snapshot" && req.method==="POST"){
     if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
-    return json({ok:true, snapshot: await takeSnapshot(env, now)});
+    const snap = await takeSnapshot(env, now);
+    await logAdmin(env, smap, realRole, "snapshot", "manual snapshot taken");
+    return json({ok:true, snapshot: snap});
   }
   if((m = path.match(/^\/api\/snapshot\/([^/]+)$/)) && req.method==="GET"){
     if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
@@ -422,13 +485,25 @@ async function handleApi(req, env){
     await takeSnapshot(env, now);   // safety snapshot of the current state first
     const res = await restoreSnapshot(env, decodeURIComponent(m[1]));
     if(!res) return json({error:"Snapshot not found"}, 404);
+    await logAdmin(env, smap, realRole, "restore", "restored snapshot "+res.ts+" ("+res.risks+" risks, "+res.milestones+" milestones); safety snapshot taken first");
     return json({ok:true, restored:res});
+  }
+
+  // admin activity log — who restored/imported/hid what, and when
+  if(path==="/api/adminlog" && req.method==="GET"){
+    if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    return json({ok:true, log:(smap.adminlog||[]).slice().reverse()});
   }
 
   if(path==="/api/settings" && req.method==="PUT"){
     if(!isAdmin(role)) return json({error:"Admins only"}, 403);
+    // Optimistic concurrency: two admins editing at once must not silently
+    // overwrite each other. The client sends the `updated` stamp it loaded.
+    if(body.baseUpdated !== undefined && (body.baseUpdated||null) !== ((smap.global && smap.global.updated)||null))
+      return json({error:"Meetings & contacts were changed by someone else while you had them open — reload and reapply your change.", code:409}, 409);
     const s = body.settings || {}; s.updated = now;
     await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('global',?)").bind(JSON.stringify(s)).run();
+    await logAdmin(env, smap, realRole, "settings", "meetings & contacts updated");
     return json({ok:true, settings:s});
   }
 
@@ -436,18 +511,23 @@ async function handleApi(req, env){
   // for everyone except admins (Jim/Julia see everything, with a badge).
   if(path==="/api/panels" && req.method==="PUT"){
     if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    if(body.baseUpdated !== undefined && (body.baseUpdated||null) !== (smap.panels.updated||null))
+      return json({error:"Panel visibility was changed by someone else just now — refreshed to the latest state, please retry.", code:409}, 409);
     const cfg = {hidden: (body.panels && body.panels.hidden) || []};
     const err = validatePanels(cfg);
     if(err) return json({error:err}, 400);
     cfg.updated = now; cfg.updatedBy = realRole;
     await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('panels',?)")
       .bind(JSON.stringify(cfg)).run();
+    await logAdmin(env, smap, realRole, "panels", cfg.hidden.length ? "hidden: "+cfg.hidden.join(", ") : "all panels visible");
     return json({ok:true, panels:cfg});
   }
 
   // access config — admins only, with lockout guards
   if(path==="/api/access" && req.method==="PUT"){
     if(!isAdmin(realRole)) return json({error:"Admins only"}, 403);
+    if(body.baseUpdated !== undefined && (body.baseUpdated||null) !== ((accessCfg && accessCfg.updated)||null))
+      return json({error:"Access settings were changed by someone else while you had them open — reload to see the latest, then reapply your change.", code:409}, 409);
     const cfg = body.access || {};
     const err = validateAccessConfig(cfg, realRole);
     if(err) return json({error:err}, 400);
@@ -462,6 +542,8 @@ async function handleApi(req, env){
     } else { delete cfg.teamDomain; delete cfg.aud; }
     cfg.updated = now; cfg.updatedBy = realRole;
     await env.DB.prepare("INSERT OR REPLACE INTO settings (k,v) VALUES ('access',?)").bind(JSON.stringify(cfg)).run();
+    await logAdmin(env, smap, realRole, "access",
+      cfg.users.length+" users; sign-in verification "+(cfg.teamDomain?"ON":"off"));
     return json({ok:true, access:cfg});
   }
 
@@ -470,15 +552,21 @@ async function handleApi(req, env){
 
 export default {
   // Daily backup (03:00 UTC cron in wrangler.jsonc): snapshot the whole state.
+  // Bumps the revision stamp so admins' tripwire/backup info refreshes too.
   async scheduled(event, env, ctx){
-    await ensureInit(env); await ensureExtras(env); await ensureMilestones(env);
+    await ensureAll(env);
     await takeSnapshot(env, new Date().toISOString());
+    await bumpRev(env);
   },
   async fetch(req, env){
     const url = new URL(req.url);
     if(url.pathname.startsWith("/api/")){
       try{ return await handleApi(req, env); }
-      catch(e){ return json({error:"Server error", detail:String(e)}, 500); }
+      catch(e){
+        // Log the detail for `wrangler tail`; never leak internals to the client.
+        console.error("API error:", req.method, url.pathname, (e && (e.stack || e.message)) || e);
+        return json({error:"Something went wrong on the server. Try again — and tell Jim or Julia if it keeps happening."}, 500);
+      }
     }
     return env.ASSETS.fetch(req);   // serve the front-end (public/index.html)
   }

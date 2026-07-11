@@ -32,7 +32,7 @@ smart, busy and non-technical. Every design choice follows from that.
 | Business rules | `db-app/logic.mjs` (~200 lines) | **pure functions, no I/O** — this is the file that matters |
 | Front-end | `db-app/public/index.html` (~3,100 lines, one file, no build step) | find sections by the `/* ============ NAME ============ */` banners |
 | Seed data | `db-app/seed.mjs` (generated; single source of truth for baselines) | |
-| Tests | `db-app/tests/` — `cd db-app/tests && npm i && npm test` | 150 end-to-end checks, jsdom front-end vs real worker vs mock D1 |
+| Tests | `db-app/tests/` — `cd db-app/tests && npm i && npm test` | 186 end-to-end checks, jsdom front-end vs real worker vs mock D1 |
 | Offline backup copy | `risk-taxonomy/tcf-risk-register.html` on branch `claude/risk-taxonomy-v1alvk` | read-only viewer; sync it after front-end changes (see §5) |
 | Plans & history | `MISSION_CONTROL_PLAN.md` (here), `risk-taxonomy/*.md` (other branch) | the plan docs record *why*, commit messages record *what* |
 | Dead branches | `cloudflare-pages`, `gh-pages` | pre-database static era; nothing deploys from them |
@@ -78,8 +78,9 @@ smart, busy and non-technical. Every design choice follows from that.
 - **Generated blocks are generated.** The `BASELINE:*` markers in index.html
   are written by `tools/sync-baseline.mjs` from `seed.mjs`; the test suite
   fails on drift. Never hand-edit inside the markers.
-- **`view-as` is a read: only `/api/state` honours it**; every write route
-  uses the real identity, and the client blocks writes during preview.
+- **`view-as` is a read**: only the read-only GETs (`/api/state`,
+  `/api/budget`, `/api/history`) honour it; every write route uses the real
+  identity, and the client blocks writes during preview.
 - **Optimistic concurrency**: writes carry `baseUpdated`; a mismatch is a 409
   and a reload, never a silent overwrite. New-risk creation uses plain INSERT
   with collision retry — don't "simplify" it back to an upsert.
@@ -107,7 +108,7 @@ smart, busy and non-technical. Every design choice follows from that.
 ```
 1. edit db-app/{worker.js,logic.mjs,public/index.html}
 2. node --check on each changed file (extract index.html's <script> first)
-3. cd db-app/tests && npm test          # 150 checks; add yours FIRST
+3. cd db-app/tests && npm test          # 186 checks; add yours FIRST
 4. bump APP_VERSION in index.html       # it shows in the footer — cache sanity
 5. git push origin db-staging           # that IS the deploy
 6. hard-refresh, check footer version, click the thing you changed
@@ -152,8 +153,22 @@ the suite is why a 2,300-line single file has stayed changeable.
   nothing is sent server-side. A real digest needs an email provider
   (Resend key or CF Email Routing + custom domain). Decided against until
   someone actually misses an approval.
-- **Sync is a 45s poll + refresh-on-focus**, not websockets. Fine at 10
-  users; revisit at 50.
+- **Sync is a 45s poll + refresh-on-focus**, not websockets — but the poll is
+  cheap now: every write bumps an opaque `rev` stamp (settings key `rev`),
+  pollers present theirs, and an unchanged register costs one D1 query and a
+  ~28-byte reply (no re-render client-side). Edit histories are NOT in the
+  poll — they load on demand via `GET /api/history` (same hidden-risk
+  stripping as /api/state) for the modal, change report, packs and exports.
+  If you ever add a write path that bypasses `handleApi` (like the cron
+  snapshot does), call `bumpRev()` yourself or clients will look stale until
+  the next ordinary write.
+- **Admin surfaces have optimistic concurrency too**: PUT /api/access,
+  /api/settings and /api/panels take a `baseUpdated` stamp and 409 on a
+  mismatch, so two admins can't silently overwrite each other. Admin actions
+  (restores, imports, panel/access/settings changes) append to the
+  `adminlog` settings key — capped at 200, shown in the Access module, and
+  deliberately excluded from snapshots so a restore can't erase the record
+  of itself.
 - **SOAP content and the priorities engine weights are constants** in
   index.html (`const SOAP`, `computePriorities`). The SOAP is draft v7 —
   when the Board approves final wording, edit the constant. The `[X]%`

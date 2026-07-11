@@ -696,6 +696,11 @@ window.onerror = function(msg, src, line){
       <button class="btn-soft" onclick="takeSnapshotNow()">📸 Take a snapshot now</button>
       <div id="accSnaps" style="margin-top:10px"></div>
     </div>
+    <div class="card" style="margin-bottom:30px">
+      <h3>Admin activity <span class="hint">restores, imports, panel and access changes — newest first, latest 200 kept</span></h3>
+      <p class="rubric-note">The record of admin actions. Deliberately excluded from snapshots, so restoring a backup can never erase the record of the restore itself.</p>
+      <div id="accLog"></div>
+    </div>
   </section>
 
   <!-- APPROVALS -->
@@ -926,7 +931,7 @@ const BASELINE_MILESTONES = [{"id":"M01","soap":"A1","owner":"Nikesh","com":"Boa
 /* BASELINE-MS:END */
 
 /* ============ STATE ============ */
-const APP_VERSION = "v2026-07-11f";
+const APP_VERSION = "v2026-07-11g";
 const TODAY = new Date().toISOString().slice(0,10);
 const PEOPLE = ["Julia","Jim","Nikesh","Jacqui","Chris"];
 const ADMINS = ["Jim","Julia"];                       // access-all-areas
@@ -953,6 +958,8 @@ let jwtEnforced = false;             // is sign-in (JWT) verification on server-
 let seededAt = null, lastSnap = null; // re-seed tripwire inputs from /api/state
 let budget = null;                   // budget module payload from GET /api/budget (admin gets .hidden list)
 let budState = {present:false, visible:0};  // light flags from /api/state (drives the nav button)
+let stateRev = null;                 // server revision stamp — lets the 45s poll skip unchanged payloads
+let histCache = null, histRev = null, histLoading = null;  // on-demand edit histories (see ensureHistory)
 let viewAs = null;                   // admin preview of another user's view
 let saveInFlight = false;
 let sortKey = "score", sortDir = -1;
@@ -1071,8 +1078,14 @@ async function refreshState(opts){
   // don't clobber an open editor/settings panel unless forced (e.g. straight after a save)
   if(!opts.force && (document.getElementById("overlay").classList.contains("open")
       || document.getElementById("settingsOverlay").classList.contains("open"))) return false;
-  const {ok, data} = await apiCall("GET","/api/state" + (viewAs ? "?viewAs="+encodeURIComponent(viewAs) : ""));
-  if(!ok || !Array.isArray(data.risks)) return false;
+  const qs = [];
+  if(viewAs) qs.push("viewAs="+encodeURIComponent(viewAs));
+  if(stateRev) qs.push("rev="+encodeURIComponent(stateRev));
+  const {ok, data} = await apiCall("GET","/api/state" + (qs.length ? "?"+qs.join("&") : ""));
+  if(!ok) return false;
+  if(data.unchanged) return true;   // nothing moved since our rev — skip all re-rendering
+  if(!Array.isArray(data.risks)) return false;
+  stateRev = data.rev || null;
   risks = data.risks; deletedRisks = data.deleted || []; milestones = data.milestones || []; settings = mergeSettings(data.settings);
   people = data.people || people; catOwn = data.catOwner || catOwn;
   if(data.access !== undefined) accessCfg = data.access;
@@ -1128,6 +1141,7 @@ function viewAsGuard(){ if(viewAs){ toast("View-as is a read-only preview — ex
 function setViewAs(v){
   viewAs = v || null;
   budget = null;   // budget payload is per-identity — refetch under the new view
+  stateRev = null; histCache = null; histRev = null;   // state + histories are per-identity too
   if(document.getElementById("view-access").classList.contains("active")) showModule("home");
   refreshState({force:true});
   if(document.getElementById("view-budget").classList.contains("active")) showModule("budget");
@@ -1183,6 +1197,29 @@ function diffRisk(prev, next){
   Object.keys(FIELDS).forEach(f=>{ if(!sameVal(prev[f], next[f])) changes.push({f, from:prev[f], to:next[f]}); });
   return changes;
 }
+/* Edit histories are fetched on demand (GET /api/history) rather than shipped
+   with every 45s poll — the poll payload no longer grows with years of edits.
+   The offline copy keeps history on the objects themselves, so histFor falls
+   back to r.history when there is no API. */
+async function ensureHistory(){
+  if(!apiMode) return true;
+  if(histCache && histRev === stateRev) return true;
+  if(histLoading) return histLoading;   // de-dupe concurrent loads
+  histLoading = (async()=>{
+    const {ok, data} = await apiCall("GET","/api/history" + (viewAs ? "?viewAs="+encodeURIComponent(viewAs) : ""));
+    histLoading = null;
+    if(!ok) return false;
+    histCache = {risks:data.risks||{}, deleted:data.deleted||{}};
+    histRev = stateRev;
+    return true;
+  })();
+  return histLoading;
+}
+function histLoaded(){ return !apiMode || (histCache && histRev === stateRev); }
+function histFor(r, isDeleted){
+  if(!apiMode || !histCache) return r.history || [];
+  return (isDeleted ? histCache.deleted : histCache.risks)[r.id] || r.history || [];
+}
 /* Rebuild a risk as it stood at the cutoff by undoing history entries newer than it. */
 function rewind(r, cutoff){
   if((r.created||BASE) > cutoff) return null;
@@ -1194,17 +1231,18 @@ function rewind(r, cutoff){
 }
 /* Register state (incl. since-deleted risks) as at end of the given day. Returns map id->risk.
    Currently-hidden risks are excluded even for admins: this feeds the change report and
-   committee-pack change logs, which get printed and circulated. */
+   committee-pack change logs, which get printed and circulated.
+   NB: callers must await ensureHistory() first in API mode. */
 function stateAt(dateStr){
   const cutoff = dateStr + "T23:59:59.999Z";
   const out = {};
-  liveList().filter(r=>!r.hidden).forEach(r=>{ const s = rewind(r, cutoff); if(s) out[s.id] = s; });
-  deletedRisks.filter(d=>!d.hidden).forEach(d=>{ if((d.deletedAt||"") > cutoff){ const s = rewind(d, cutoff); if(s) out[s.id] = s; } });
+  liveList().filter(r=>!r.hidden).forEach(r=>{ const s = rewind({...r, history: histFor(r, false)}, cutoff); if(s) out[s.id] = s; });
+  deletedRisks.filter(d=>!d.hidden).forEach(d=>{ if((d.deletedAt||"") > cutoff){ const s = rewind({...d, history: histFor(d, true)}, cutoff); if(s) out[s.id] = s; } });
   return out;
 }
-function entriesBetween(r, a, b){
+function entriesBetween(hist, a, b){
   const ca = a + "T23:59:59.999Z", cb = b + "T23:59:59.999Z";
-  return (r.history||[]).filter(h=> h.at > ca && h.at <= cb);
+  return (hist||[]).filter(h=> h.at > ca && h.at <= cb);
 }
 function describeChange(ch){
   const f = FIELDS[ch.f] || ch.f;
@@ -1274,7 +1312,7 @@ function showModule(m){
   if(m==="pack") renderPack();
   if(m==="approvals") renderApprovals();
   if(m==="budget") openBudget();
-  if(m==="access"){ renderAccess(); renderBackups(); }
+  if(m==="access"){ renderAccess(); renderBackups(); renderAdminLog(); }
 }
 
 /* ---- dashboard ---- */
@@ -1477,12 +1515,19 @@ function chgScoreCell(sa, sb){
   return `<span class="pill" style="background:${bandHex(sa)}">${sa}</span><span class="arrowto">→</span>`+
          `<span class="pill" style="background:${bandHex(sb)}">${sb}</span> ${kpiDelta(sa, sb)}`;
 }
-function renderChanges(){
+async function renderChanges(){
   const fromEl = document.getElementById("chgFrom"), toEl = document.getElementById("chgTo");
   if(!fromEl.value) fromEl.value = BASE.slice(0,10);
   if(!toEl.value) toEl.value = TODAY;
   let A = fromEl.value, B = toEl.value;
   if(A > B){ const t = A; A = B; B = t; }
+  if(!histLoaded()){
+    document.getElementById("chgPeriodNote").textContent = "Loading the change history…";
+    if(!(await ensureHistory())){
+      document.getElementById("chgPeriodNote").textContent = "Could not load the change history — check your connection and reopen this tab.";
+      return;
+    }
+  }
   const sa = stateAt(A), sb = stateAt(B);
   document.getElementById("chgPeriodNote").textContent =
     `Comparing the register as it stood at end of ${A} with end of ${B}. Risks edited in between are listed with what changed and by whom.`;
@@ -1499,9 +1544,10 @@ function renderChanges(){
   const changed = [];
   Object.keys(sb).forEach(id=>{
     if(!sa[id]) return;
+    const inRisks = risks.some(r=>r.id===id);
     const live = risks.find(r=>r.id===id) || deletedRisks.find(d=>d.id===id);
     if(!live) return;
-    const entries = entriesBetween(live, A, B).filter(h=>h.changes);
+    const entries = entriesBetween(histFor(live, !inRisks), A, B).filter(h=>h.changes);
     if(!entries.length) return;
     changed.push({a:sa[id], b:sb[id], entries});
   });
@@ -1609,19 +1655,26 @@ function openModal(id){
   ro.textContent = role==="viewer" ? "Read-only — you have view access to this register."
     : `Read-only — this area is owned by ${r? area(r).cat.owner : ""}.`;
   document.getElementById("mHistoryWrap").style.display = r ? "" : "none";
-  if(r){
-    const hist = [...(r.history||[])].sort((a,b)=> a.at<b.at ? 1 : -1);
-    document.getElementById("mHistory").innerHTML = hist.map(h=>{
-      const when = (h.at||"").slice(0,10);
-      if(h.created) return `<div class="h-item"><b>${when}</b> — created${h.by && h.by!=="baseline" ? " by "+esc(h.by) : " (baseline draft)"}</div>`;
-      if(h.note && !h.changes) return `<div class="h-item"><b>${when}</b> — ${esc(h.by||"?")}: ${esc(h.note)}</div>`;
-      const appr = h.approvedBy ? ` <span class="risk-sub">(approved by ${esc(h.approvedBy)})</span>` : "";
-      return `<div class="h-item"><b>${when}</b> — ${esc(h.by||"?")}: ${(h.changes||[]).map(describeChange).join("; ")}${appr}</div>`;
-    }).join("") || '<div class="h-item">No changes recorded.</div>';
-  }
+  if(r) renderModalHistory(r);
   buildPickers(editable);
   refreshScoreUI();
   document.getElementById("overlay").classList.add("open");
+}
+async function renderModalHistory(r){
+  const el = document.getElementById("mHistory");
+  if(!histLoaded()){
+    el.innerHTML = '<div class="h-item">Loading history…</div>';
+    if(!(await ensureHistory())){ el.innerHTML = '<div class="h-item">History unavailable — check your connection and reopen.</div>'; return; }
+    if(editingId !== r.id) return;   // the modal moved on while we were loading
+  }
+  const hist = [...histFor(r, false)].sort((a,b)=> a.at<b.at ? 1 : -1);
+  el.innerHTML = hist.map(h=>{
+    const when = (h.at||"").slice(0,10);
+    if(h.created) return `<div class="h-item"><b>${when}</b> — created${h.by && h.by!=="baseline" ? " by "+esc(h.by) : " (baseline draft)"}</div>`;
+    if(h.note && !h.changes) return `<div class="h-item"><b>${when}</b> — ${esc(h.by||"?")}: ${esc(h.note)}</div>`;
+    const appr = h.approvedBy ? ` <span class="risk-sub">(approved by ${esc(h.approvedBy)})</span>` : "";
+    return `<div class="h-item"><b>${when}</b> — ${esc(h.by||"?")}: ${(h.changes||[]).map(describeChange).join("; ")}${appr}</div>`;
+  }).join("") || '<div class="h-item">No changes recorded.</div>';
 }
 function buildPickers(editable){
   const mk = (el, get, set, kind) => {
@@ -1878,15 +1931,18 @@ async function saveSettings(){
       .split("\n").map(s=>s.trim()).filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s)).sort();
   });
   editorNames().forEach(p=>{ const el=document.getElementById("setE-"+p); if(el) settings.emails[p] = el.value.trim(); });
-  settings.updated = new Date().toISOString();
-  const {ok, data} = await apiCall("PUT", "/api/settings", {settings});
-  if(!ok){ toast(data.error||"Could not save settings."); return; }
+  const {ok, status, data} = await apiCall("PUT", "/api/settings", {settings, baseUpdated: settings.updated || null});
+  if(!ok){
+    toast(data.error||"Could not save settings.");
+    if(status===409){ closeSettings(); await refreshState({force:true}); }
+    return;
+  }
   closeSettings(); await refreshState({force:true}); toast("Settings saved.");
 }
 
 /* ============ COMMITTEE PACK ============ */
 function packScope(com){ return com==="Board" ? sharedList() : sharedList().filter(r=>r.com===com); }
-function renderPack(keepSince){
+async function renderPack(keepSince){
   const sel = document.getElementById("pCom");
   if(!sel.options.length) sel.innerHTML = Object.keys(COMMITTEES).map(c=>`<option value="${c}">${c} — ${COMMITTEES[c]}</option>`).join("");
   const com = sel.value || "Board";
@@ -1958,7 +2014,12 @@ function renderPack(keepSince){
       }).join("") + `</div>`;
   }
 
-  // change log since last meeting
+  // change log since last meeting (needs histories; loaded on demand)
+  if(since && !histLoaded() && !(await ensureHistory())){
+    html += `<div class="card"><h3>Changes since ${since}</h3><div class="none-msg">Could not load the change history — reload and try again.</div></div>`;
+    document.getElementById("packBody").innerHTML = html;
+    return;
+  }
   if(since){
     const sa = stateAt(since), sb = stateAt(TODAY);
     const changedRows = [];
@@ -1966,7 +2027,7 @@ function renderPack(keepSince){
       if(!sa[id] || !ids.has(id)) return;
       const live = risks.find(r=>r.id===id);
       if(!live) return;
-      const entries = entriesBetween(live, since, TODAY).filter(h=>h.changes);
+      const entries = entriesBetween(histFor(live, false), since, TODAY).filter(h=>h.changes);
       if(!entries.length) return;
       changedRows.push({a:sa[id], b:sb[id], entries});
     });
@@ -1996,15 +2057,19 @@ function download(name, text, type){
   a.download = name; a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
 }
-function exportJSON(mineOnly){
+async function exportJSON(mineOnly){
   // Admins' full export is the backup, so it includes hidden risks (counted in the
   // toast); anything a non-admin can export never contains hidden risks.
+  // Histories are fetched on demand so the export stays a complete backup.
+  if(apiMode && !(await ensureHistory())){ toast("Could not load the edit history — export cancelled, try again."); return; }
   let data = risks.filter(visibleToMe), del = deletedRisks.filter(visibleToMe);
   if(mineOnly){
     data = data.filter(r=>ownerLabel(area(r).cat)===role);
     del = del.filter(r=>AREA_MAP[r.l2] && ownerLabel(area(r).cat)===role);
     if(!data.length && !del.length){ toast("No risks in your areas yet."); return; }
   }
+  data = data.map(r=>({...r, history: histFor(r, false)}));
+  del = del.map(d=>({...d, history: histFor(d, true)}));
   const payload = { format:"tcf-risk-register", version:4, exported:new Date().toISOString(), exportedBy: role, risks:data, deleted:del, milestones, settings };
   download(`tcf-risk-register${mineOnly?"-"+role.toLowerCase():""}-${TODAY}.json`, JSON.stringify(payload,null,2), "application/json");
   const hid = data.filter(r=>r.hidden).length;
@@ -2574,9 +2639,15 @@ async function toggleBudPanel(pid){
   const hidden = budget.hidden.includes(pid)
     ? budget.hidden.filter(p=>p!==pid)
     : budget.hidden.concat([pid]);
-  const {ok, data} = await apiCall("PUT","/api/panels",{panels:{hidden}});
-  if(!ok){ toast(data.error||"Could not change panel visibility."); return; }
+  const {ok, status, data} = await apiCall("PUT","/api/panels",
+    {panels:{hidden}, baseUpdated: budget.panelsUpdated || null});
+  if(!ok){
+    toast(data.error||"Could not change panel visibility.");
+    if(status===409){ await refreshBudget(); renderBudget(); }
+    return;
+  }
   budget.hidden = data.panels.hidden;
+  budget.panelsUpdated = data.panels.updated || null;
   toast(budget.hidden.includes(pid) ? "Panel hidden — only you and other admins can see it now." : "Panel visible to everyone again.");
   renderBudget();
   refreshState({force:true});
@@ -2879,6 +2950,7 @@ const CAPABILITIES = [
   ["Meetings & contacts settings","Yes","No","No"],
   ["Access module & view-as","Yes","No","No"],
   ["Backups — take, download, restore","Yes","No","No"],
+  ["Admin activity log","Yes","No","No"],
   ["Budget module","All panels · import data · hide/unhide panels","Visible panels only","Visible panels only"],
   ["Export JSON / CSV","Yes (JSON incl. hidden)","Yes (hidden excluded)","Yes (hidden excluded)"]
 ];
@@ -2929,6 +3001,19 @@ async function renderBackups(){
       '</tbody></table></div>'
     : '<span class="count-note">No backups yet — the first automatic snapshot runs at 03:00 UTC tonight, or take one now.</span>';
 }
+async function renderAdminLog(){
+  const el = document.getElementById("accLog");
+  if(!el || !apiMode || !isAdmin()) return;
+  el.innerHTML = '<span class="count-note">Loading…</span>';
+  const {ok, data} = await apiCall("GET","/api/adminlog");
+  if(!ok){ el.innerHTML = '<span class="count-note">Could not load the activity log — ' + esc(data.error||"try reloading") + '</span>'; return; }
+  const rows = data.log || [];
+  el.innerHTML = rows.length
+    ? '<div class="table-scroll"><table class="pack-table"><thead><tr><th>When (UTC)</th><th>Who</th><th>Action</th><th>Detail</th></tr></thead><tbody>' +
+      rows.map(e=>`<tr><td style="white-space:nowrap">${esc(String(e.at).replace("T"," ").slice(0,16))}</td><td>${esc(e.by||"?")}</td><td style="font-weight:700">${esc(e.action||"")}</td><td style="font-size:12px">${esc(e.detail||"")}</td></tr>`).join("") +
+      '</tbody></table></div>'
+    : '<span class="count-note">Nothing logged yet — admin actions will appear here.</span>';
+}
 async function takeSnapshotNow(){
   if(viewAsGuard()) return;
   if(!apiMode || !isAdmin()) return;
@@ -2968,8 +3053,13 @@ function accAddUser(){
 async function saveAccess(){
   if(viewAsGuard()) return;
   if(!apiMode || !isAdmin() || !accDraft) return;
-  const {ok, data} = await apiCall("PUT","/api/access", {access:accDraft});
-  if(!ok){ toast(data.error||"Could not save access settings."); return; }
+  const {ok, status, data} = await apiCall("PUT","/api/access",
+    {access:accDraft, baseUpdated: (accessCfg && accessCfg.updated) || null});
+  if(!ok){
+    toast(data.error||"Could not save access settings.");
+    if(status===409){ accDraft = null; await refreshState({force:true}); renderAccess(); }
+    return;
+  }
   accDraft = null;
   await refreshState({force:true});
   renderAccess();
@@ -2984,7 +3074,10 @@ function populateFilters(){
   document.getElementById("fOwner").innerHTML = '<option value="">All owners</option>' + owners.map(o=>`<option>${esc(o)}</option>`).join("");
   document.getElementById("fCom").innerHTML = '<option value="">All committees</option>' + Object.keys(COMMITTEES).map(c=>`<option value="${c}" title="${COMMITTEES[c]}">${c}</option>`).join("");
 }
-function renderAll(){ renderHome(); renderMilestones(); renderDashboard(); renderRegister(); renderTaxonomy(); renderChanges(); updateApprBadge(); if(document.getElementById("view-approvals").classList.contains("active")) renderApprovals(); }
+function renderAll(){ renderHome(); renderMilestones(); renderDashboard(); renderRegister(); renderTaxonomy(); updateApprBadge();
+  // history-hungry views only rebuild while actually open (they fetch history on demand)
+  if(document.getElementById("view-changes").classList.contains("active")) renderChanges();
+  if(document.getElementById("view-approvals").classList.contains("active")) renderApprovals(); }
 populateFilters();
 renderRubric("rubricOverview");
 renderRubric("rubricModal");

@@ -303,125 +303,46 @@
   footer{max-width:1500px;margin:0 auto;padding:0 28px 36px;color:var(--muted);font-size:12px}
 
   /* ============ RETRO THEME — 80s MISSION CONTROL ============
-     Default look. "Classic" is one click away (🕹 button, saved per browser).
-     Everything scoped to html[data-theme="retro"]; printing always reverts to
-     classic (committee packs must stay boardroom-clean). */
-  html[data-theme="retro"]{
-    --red:#ff2e1f; --red-dark:#8f0e06; --red-mid:#ff7b6f; --red-pale:#4a120d;
-    --ink:#c8f7d8; --muted:#6fbf8f; --line:#173a52; --bg:#050a12; --card:#0a1424;
-    --low:#39ff88; --mod:#ffd23b; --high:#ffa02e; --sev:#ff5252;
-    --radius:8px; --shadow:0 0 0 1px #10314a,0 0 14px rgba(46,230,255,.07);
-  }
-  html[data-theme="retro"] body{
-    background:
-      radial-gradient(1px 1px at 12% 22%, rgba(255,255,255,.3) 50%, transparent 51%),
-      radial-gradient(1px 1px at 68% 8%, rgba(255,255,255,.22) 50%, transparent 51%),
-      radial-gradient(1.5px 1.5px at 32% 76%, rgba(180,230,255,.26) 50%, transparent 51%),
-      radial-gradient(1px 1px at 84% 55%, rgba(255,255,255,.2) 50%, transparent 51%),
-      radial-gradient(1px 1px at 48% 38%, rgba(255,255,255,.16) 50%, transparent 51%),
-      radial-gradient(1.5px 1.5px at 92% 88%, rgba(180,230,255,.22) 50%, transparent 51%),
-      #050a12;
-    background-size:340px 340px,420px 420px,520px 520px,380px 380px,300px 300px,460px 460px,auto;
-  }
-  /* faint tube vignette (scanlines retired — too loud for daily use) */
-  html[data-theme="retro"] body::after{
-    content:""; position:fixed; inset:0; z-index:9998; pointer-events:none;
-    background:radial-gradient(ellipse at center, transparent 70%, rgba(0,0,0,.2) 100%);
-  }
+     Default look: the ORIGINAL Churchill Fellowship palette (light background,
+     brand red, white cards) dressed with retro chrome — monospace masthead and
+     nav, mission clock, a sunset stripe in TCF tones, blinking console cursor,
+     and the amber-CRT boot screen. "Classic" is one click away (🕹 button,
+     saved per browser). Scoped to html[data-theme="retro"]; printing reverts
+     to classic (committee packs must stay boardroom-clean). */
   /* retro type is reserved for the chrome — content stays in the readable face */
   html[data-theme="retro"] .brand h1,html[data-theme="retro"] .brand .sub,html[data-theme="retro"] nav button,
   html[data-theme="retro"] .subnav button,html[data-theme="retro"] .chip,html[data-theme="retro"] #whoami,
   html[data-theme="retro"] .kpi .n,html[data-theme="retro"] footer{font-family:"Courier New",ui-monospace,Menlo,Consolas,monospace}
-  /* header: night-ops console with an 80s sunset stripe */
-  html[data-theme="retro"] header{
-    background:linear-gradient(180deg,#0b1020,#0a0d18);
-    border-bottom:2px solid #ff2e1f;
-    box-shadow:0 2px 0 #ffa02e,0 4px 0 #ffd23b,0 8px 20px rgba(255,46,31,.14);
-  }
-  html[data-theme="retro"] .brand h1{text-transform:uppercase;letter-spacing:.14em;font-size:19px;color:#e6fbff;
-    text-shadow:0 0 4px rgba(46,230,255,.55),0 0 12px rgba(46,230,255,.22)}
-  html[data-theme="retro"] .brand .sub{color:#6fdff2;text-transform:uppercase;letter-spacing:.08em;font-size:11px;opacity:1}
-  html[data-theme="retro"] .chip{background:transparent;border:1px solid #ffd23b;color:#ffd23b;border-radius:2px}
-  html[data-theme="retro"] #whoami{color:#bff3ff}
-  html[data-theme="retro"] nav button{color:#6fbf8f;text-transform:uppercase;letter-spacing:.08em;font-size:12.5px;border-radius:0}
-  html[data-theme="retro"] nav button.active{background:var(--bg);color:#39ff88;text-shadow:0 0 6px rgba(57,255,136,.4);box-shadow:inset 0 2px 0 #39ff88}
+  /* header keeps the brand red gradient; the stripe underneath is the 80s sunset in TCF tones */
+  html[data-theme="retro"] header{border-bottom:2px solid var(--red-dark);
+    box-shadow:0 2px 0 var(--red-mid),0 4px 0 var(--red-pale)}
+  html[data-theme="retro"] .brand h1{text-transform:uppercase;letter-spacing:.12em;font-size:19px}
+  html[data-theme="retro"] .brand .sub{text-transform:uppercase;letter-spacing:.08em;font-size:11px}
+  html[data-theme="retro"] .chip{border-radius:2px}
+  html[data-theme="retro"] nav button{text-transform:uppercase;letter-spacing:.07em;font-size:12.5px;border-radius:0}
+  html[data-theme="retro"] nav button.active{box-shadow:inset 0 3px 0 var(--red-dark)}
   html[data-theme="retro"] .subnav button{border-radius:0;text-transform:uppercase;font-size:11.5px;letter-spacing:.06em}
-  html[data-theme="retro"] .subnav button.active{background:var(--card);color:#39ff88;box-shadow:inset 0 2px 0 #39ff88}
-  /* controls */
+  html[data-theme="retro"] .subnav button.active{box-shadow:var(--shadow),inset 0 3px 0 var(--red)}
   html[data-theme="retro"] button{border-radius:6px}
-  html[data-theme="retro"] .btn-ghost{background:rgba(46,230,255,.08);border:1px solid rgba(46,230,255,.6);color:#bff3ff}
-  html[data-theme="retro"] .btn-primary{background:#ff2e1f;color:#fff;box-shadow:0 0 6px rgba(255,46,31,.3)}
-  html[data-theme="retro"] .btn-soft{background:#122036;color:var(--ink);border:1px solid var(--line)}
-  html[data-theme="retro"] .btn-danger{background:transparent;border:1px solid var(--sev);color:var(--sev)}
-  html[data-theme="retro"] select,html[data-theme="retro"] input[type=text],html[data-theme="retro"] input[type=date],html[data-theme="retro"] input[type=month],html[data-theme="retro"] textarea,
-  html[data-theme="retro"] .fld input,html[data-theme="retro"] .fld select,html[data-theme="retro"] .fld textarea{background:#0a1322;color:var(--ink);border-color:var(--line)}
-  html[data-theme="retro"] .fld input:disabled,html[data-theme="retro"] .fld select:disabled,html[data-theme="retro"] .fld textarea:disabled{background:#0e1526;color:#5b7a6a}
-  html[data-theme="retro"] .head-controls select{background:#0a1322;border:1px solid #2ee6ff;color:#bff3ff}
-  html[data-theme="retro"] .picker .nums button{background:#122036;color:var(--ink)}
-  html[data-theme="retro"] .toggle{background:#0a1322;color:var(--muted)}
-  html[data-theme="retro"] .toggle.on{background:#241012;border-color:var(--red);color:#ff9d94}
-  html[data-theme="retro"] .viewtoggle button{background:#122036;color:var(--muted)}
-  html[data-theme="retro"] .viewtoggle button.active{background:#ff2e1f;color:#fff;box-shadow:0 0 6px rgba(255,46,31,.3)}
-  /* surfaces */
-  html[data-theme="retro"] .card,html[data-theme="retro"] .kpi,html[data-theme="retro"] .soap-card,html[data-theme="retro"] .enabler-tile,html[data-theme="retro"] .ms-row,html[data-theme="retro"] .tl-wrap,html[data-theme="retro"] .tax-cat{border:1px solid var(--line)}
-  html[data-theme="retro"] .card h3{color:#7ee3f4}
-  html[data-theme="retro"] .kpi .n{text-shadow:0 0 8px rgba(57,255,136,.2);color:#e9fff2}
-  html[data-theme="retro"] thead th{background:#0e1c30;color:#6fdff2}
-  html[data-theme="retro"] tbody tr:hover td{background:#0f2138}
-  html[data-theme="retro"] .tax-area:hover{background:#0f2138}
-  html[data-theme="retro"] .breach-list .item:hover{background:#0f2138;border-color:#2ee6ff}
-  html[data-theme="retro"] .bars .track,html[data-theme="retro"] .pbar{background:#0e1c30}
-  html[data-theme="retro"] .modal{background:var(--card);border:1px solid rgba(46,230,255,.55);border-radius:8px;box-shadow:0 0 0 1px #10314a,0 0 24px rgba(46,230,255,.14)}
-  html[data-theme="retro"] .overlay{background:rgba(2,6,12,.72)}
-  html[data-theme="retro"] .step,html[data-theme="retro"] details.rubric-fold,html[data-theme="retro"] .hist,html[data-theme="retro"] .prop-note{background:#0a1322}
-  html[data-theme="retro"] .step .cad,html[data-theme="retro"] .due{background:#241012;color:#ff9d94}
-  html[data-theme="retro"] .prio .why{color:var(--muted)}
-  html[data-theme="retro"] .appetite-cmp.bad{background:#2a0705}
-  html[data-theme="retro"] .navbadge{background:#ffd23b;color:#3a2a00}
-  html[data-theme="retro"] .tag-draft,html[data-theme="retro"] .tbc,html[data-theme="retro"] .tag-prop{background:#2a2205;color:#ffd23b}
-  html[data-theme="retro"] .tag-ai{background:#1c1030 !important;color:#c39bff !important}
-  html[data-theme="retro"] .tag-flag{background:#2a0705;color:#ff9d94}
-  html[data-theme="retro"] tr.is-hidden td{background:#141024}
-  html[data-theme="retro"] .pending-banner{background:#221a02;border-color:#5c4a08;color:#ffd23b}
-  html[data-theme="retro"] .toast{background:#04121f;border:1px solid #39ff88;color:#c9ffdf;box-shadow:0 0 12px rgba(57,255,136,.22)}
-  html[data-theme="retro"] #apiBanner{background:#221a02;color:#ffd23b;border-bottom-color:#5c4a08}
-  html[data-theme="retro"] #seedBanner{background:#2a0705;color:#ff9d94;border-bottom-color:#5c1410}
-  html[data-theme="retro"] #vaBanner{background:#140a28;color:#c39bff;border-bottom-color:#33206b}
-  /* budget module on dark */
-  html[data-theme="retro"] .bchip.good{background:#04240f;color:#39ff88}
-  html[data-theme="retro"] .bchip.warn{background:#2a2205;color:#ffd23b}
-  html[data-theme="retro"] .bchip.serious{background:#2a1505;color:#ffa02e}
-  html[data-theme="retro"] .bchip.critical{background:#2a0705;color:#ff5252}
-  html[data-theme="retro"] .bchip.under{background:#04182a;color:#4dc9ff}
-  html[data-theme="retro"] .bud-callout{background:#2a2205;color:var(--ink)}
-  html[data-theme="retro"] .bud-callout.block{background:#2a0705}
-  html[data-theme="retro"] #view-budget .acthead td,html[data-theme="retro"] .acthead td{background:#0e1c30}
-  html[data-theme="retro"] .bud-comment{background:#0a1322;color:var(--ink)}
-  html[data-theme="retro"] .bud-showmore{color:#4dc9ff}
+  html[data-theme="retro"] .kpi .n{letter-spacing:-.04em}
   /* footer: live console cursor */
-  html[data-theme="retro"] footer{color:#3f8f66}
-  html[data-theme="retro"] #footNote::after{content:"▊";margin-left:6px;color:#39ff88;animation:tcfblink 1.1s steps(1) infinite}
+  html[data-theme="retro"] #footNote::after{content:"▊";margin-left:6px;color:var(--red);animation:tcfblink 1.1s steps(1) infinite}
   @keyframes tcfblink{50%{opacity:0}}
-  /* boot screen (shows in both themes while loading) */
-  #loading .boot{width:min(680px,92vw);background:#04060d;border:1px solid #2ee6ff;border-radius:4px;box-shadow:0 0 0 1px #10314a,0 0 50px rgba(46,230,255,.25);padding:26px 30px;font-family:"Courier New",ui-monospace,Menlo,monospace;color:#c8f7d8}
-  #loading .boot-logo{color:#2ee6ff;text-shadow:0 0 8px rgba(46,230,255,.8);font-size:12px;line-height:1.15;margin:0 0 14px;overflow:hidden}
-  #loading .boot-log{white-space:pre-wrap;font-size:12px;color:#39ff88;text-shadow:0 0 6px rgba(57,255,136,.5);min-height:118px}
-  #loading .boot-bar{height:14px;border:1px solid #39ff88;border-radius:2px;margin:12px 0 10px;padding:2px;background:#04121f}
-  #loading #bootBarFill{height:100%;width:0;background:repeating-linear-gradient(90deg,#39ff88 0 10px,#04121f 10px 14px);transition:width .25s;box-shadow:0 0 10px rgba(57,255,136,.6)}
-  #loading .boot-hint{font-size:10.5px;letter-spacing:.12em;color:#6fbf8f}
-  #loading .boot-cursor{animation:tcfblink 1s steps(1) infinite;color:#39ff88;margin-left:4px}
+  /* boot screen: amber-phosphor CRT (shows in both themes while loading) */
+  #loading .boot{width:min(680px,92vw);background:#100b04;border:1px solid #ffb000;border-radius:4px;box-shadow:0 0 0 1px #3a2a08,0 0 40px rgba(255,176,0,.22);padding:26px 30px;font-family:"Courier New",ui-monospace,Menlo,monospace;color:#ffd88f}
+  #loading .boot-logo{color:#ffb000;text-shadow:0 0 8px rgba(255,176,0,.7);font-size:12px;line-height:1.15;margin:0 0 14px;overflow:hidden}
+  #loading .boot-log{white-space:pre-wrap;font-size:12px;color:#ffc133;text-shadow:0 0 6px rgba(255,176,0,.45);min-height:118px}
+  #loading .boot-bar{height:14px;border:1px solid #ffb000;border-radius:2px;margin:12px 0 10px;padding:2px;background:#1c1304}
+  #loading #bootBarFill{height:100%;width:0;background:repeating-linear-gradient(90deg,#ffb000 0 10px,#1c1304 10px 14px);transition:width .25s;box-shadow:0 0 10px rgba(255,176,0,.55)}
+  #loading .boot-hint{font-size:10.5px;letter-spacing:.12em;color:#b97d1a}
+  #loading .boot-cursor{animation:tcfblink 1s steps(1) infinite;color:#ffb000;margin-left:4px}
   @media (prefers-reduced-motion: reduce){
     html[data-theme="retro"] #footNote::after,#loading .boot-cursor{animation:none}
   }
   @media print{
-    html[data-theme="retro"]{--red:#DA291C;--red-dark:#A81B12;--red-mid:#E0837B;--red-pale:#F5C2BC;--ink:#1d1d1f;--muted:#6b6b70;--line:#e6e2e0;--bg:#faf8f7;--card:#ffffff;--low:#2E7D32;--mod:#F2B705;--high:#EF6C00;--sev:#C62828;--radius:14px;--shadow:none}
-    html[data-theme="retro"] body{background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif}
-    html[data-theme="retro"] body::after{display:none}
-    html[data-theme="retro"] header{background:none;border-bottom:1px solid #e6e2e0;box-shadow:none}
-    html[data-theme="retro"] .brand h1{color:#1d1d1f;text-shadow:none;text-transform:none;letter-spacing:-.02em}
-    html[data-theme="retro"] .brand .sub{color:#6b6b70;text-shadow:none;text-transform:none}
-    html[data-theme="retro"] thead th{background:#f6f2f1;color:#6b6b70}
-    html[data-theme="retro"] .card h3{color:#1d1d1f;text-transform:none;letter-spacing:0;font-size:15px}
+    html[data-theme="retro"] header{box-shadow:none}
+    html[data-theme="retro"] .brand h1{text-transform:none;letter-spacing:-.02em}
+    html[data-theme="retro"] .brand .sub{text-transform:none}
     html[data-theme="retro"] #footNote::after{content:none}
   }
 
@@ -895,7 +816,7 @@ window.onerror = function(msg, src, line){
     </div></div>
   </div>
 </div>
-<div id="loading" style="display:none;position:fixed;inset:0;background:#04060d;z-index:80;align-items:center;justify-content:center">
+<div id="loading" style="display:none;position:fixed;inset:0;background:#0c0803;z-index:80;align-items:center;justify-content:center">
   <div class="boot" role="status" aria-label="Loading the shared register">
     <pre class="boot-logo" aria-hidden="true">
  ▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄
@@ -986,7 +907,7 @@ const BASELINE_MILESTONES = [{"id":"M01","soap":"A1","owner":"Nikesh","com":"Boa
 /* BASELINE-MS:END */
 
 /* ============ STATE ============ */
-const APP_VERSION = "v2026-07-11c";
+const APP_VERSION = "v2026-07-11d";
 const TODAY = new Date().toISOString().slice(0,10);
 const PEOPLE = ["Julia","Jim","Nikesh","Jacqui","Chris"];
 const ADMINS = ["Jim","Julia"];                       // access-all-areas

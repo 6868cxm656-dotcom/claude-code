@@ -1,0 +1,5 @@
+db-app/tests/node_modules/
+db-app/tests/package-lock.json
+__pycache__/
+*.xlsx
+dashboard.html

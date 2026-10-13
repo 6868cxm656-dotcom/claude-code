@@ -1,4 +1,5 @@
-import { json, getEmail } from "../_shared.js";
+import { json } from "../_shared.js";
 
-// Tells the page who is signed in (via Cloudflare Access).
-export const onRequestGet = ({ request }) => json({ email: getEmail(request) });
+// Tells the page who is signed in. Empty until Cloudflare Access is switched on.
+export const onRequestGet = ({ request }) =>
+  json({ email: request.headers.get("Cf-Access-Authenticated-User-Email") || "" });

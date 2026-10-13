@@ -2,7 +2,7 @@
   "name": "slt-agenda",
   "version": "1.0.0",
   "private": true,
-  "description": "Shared weekly agenda planner for the Senior Leadership Team (Cloudflare Pages + D1).",
+  "description": "Thematic goal scoreboard and meeting rhythm for a senior leadership team (Cloudflare Pages + D1).",
   "scripts": {
     "dev": "wrangler pages dev",
     "deploy": "wrangler pages deploy",

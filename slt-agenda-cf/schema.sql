@@ -1,42 +1,23 @@
--- SLT Agenda — database schema for Cloudflare D1
--- Apply with:  npm run db:remote   (and  npm run db:local  for local dev)
+-- SLT scoreboard — database schema for Cloudflare D1.
+--
+-- You don't normally need to run this: the API creates the table itself on
+-- first use (see ensureSchema in functions/_shared.js). It's here for reference
+-- and for setting up a database by hand.
+--
+-- Everything lives in one table. Each record belongs to a collection (c), may
+-- be filed under a parent record (a meeting or an objective), and keeps its
+-- fields as JSON in `data`.
 
-CREATE TABLE IF NOT EXISTS meetings (
-  id            TEXT PRIMARY KEY,
-  title         TEXT NOT NULL DEFAULT 'Senior Leadership Team',
-  date          TEXT NOT NULL,
-  start         TEXT NOT NULL DEFAULT '09:00',
-  target        INTEGER NOT NULL DEFAULT 120,
-  kind          TEXT NOT NULL DEFAULT 'slt',   -- slt | board | subcommittee | team
-  label         TEXT NOT NULL DEFAULT '',      -- optional name, e.g. a committee
-  recording_url TEXT NOT NULL DEFAULT '',      -- Granola share link
-  transcript    TEXT NOT NULL DEFAULT '',
-  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_by    TEXT
+CREATE TABLE IF NOT EXISTS records (
+  id         TEXT PRIMARY KEY,
+  c          TEXT NOT NULL,
+  parent     TEXT,
+  position   REAL NOT NULL DEFAULT 0,
+  data       TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by TEXT
 );
 
-CREATE TABLE IF NOT EXISTS items (
-  id          TEXT PRIMARY KEY,
-  meeting_id  TEXT NOT NULL,
-  position    INTEGER NOT NULL,
-  title       TEXT NOT NULL DEFAULT '',
-  type        TEXT NOT NULL DEFAULT 'discussion',
-  minutes     INTEGER NOT NULL DEFAULT 0,
-  owner       TEXT NOT NULL DEFAULT '',
-  notes       TEXT NOT NULL DEFAULT '',
-  status      TEXT NOT NULL DEFAULT 'todo',
-  standing    INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS actions (
-  id        TEXT PRIMARY KEY,
-  item_id   TEXT NOT NULL,
-  position  INTEGER NOT NULL,
-  text      TEXT NOT NULL DEFAULT '',
-  owner     TEXT NOT NULL DEFAULT '',
-  done      INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_items_meeting ON items(meeting_id);
-CREATE INDEX IF NOT EXISTS idx_actions_item ON actions(item_id);
+CREATE INDEX IF NOT EXISTS idx_records_c ON records(c);
+CREATE INDEX IF NOT EXISTS idx_records_parent ON records(parent);

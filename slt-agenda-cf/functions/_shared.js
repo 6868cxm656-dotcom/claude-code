@@ -1,182 +1,125 @@
-// Shared helpers for the SLT Agenda API (Cloudflare Pages Functions + D1).
+// Shared helpers for the SLT scoreboard API (Cloudflare Pages Functions + D1).
 // Files prefixed with "_" are not routed, but can be imported by route files.
+//
+// Everything lives in one "records" table. Each record has a collection name
+// (c), an optional parent id (a meeting or objective), a sort position and a
+// JSON data blob. The table creates itself on first use, so new features never
+// need a manual database migration.
 
-const TYPES = ["update", "decision", "discussion", "info"];
-const STATUS = ["todo", "done", "carry"];
-const KINDS = ["slt", "board", "subcommittee", "team"];
-const DEFAULT_TARGET = 120;
+export const COLLECTIONS = [
+  "kv",          // singletons: goal, playbook, team, health
+  "objective",   // defining objectives and standard operating objectives
+  "task",        // key tasks (parent: objective)
+  "status_log",  // weekly status history (parent: objective)
+  "meeting",     // tactical, strategic, offsite, board, subcommittee, team
+  "lightning",   // lightning round entries (parent: meeting)
+  "topic",       // agenda / strategic topics (parent: meeting)
+  "action",      // actions (parent: meeting raised in)
+  "decision",    // decisions (parent: meeting)
+  "cascade",     // will say / won't say (parent: meeting)
+  "carpark",     // strategic car park
+  "notdo",       // potential not-do list
+];
 
-// Standing items seeded onto new meetings.
-export function standingSeed() {
-  return [
-    { title: "Welcome", type: "info", minutes: 5, standing: true },
-    { title: "Review Team Meeting agenda next week", type: "discussion", minutes: 5, standing: true },
-    { title: "Review SLT agenda next week", type: "discussion", minutes: 5, standing: true },
-    { title: "AOB", type: "info", minutes: 5, standing: true },
-  ];
+const MAX_DATA_BYTES = 1_000_000;
+
+let schemaReady = null;
+export function ensureSchema(db) {
+  if (!schemaReady) {
+    schemaReady = db.batch([
+      db.prepare(
+        `CREATE TABLE IF NOT EXISTS records (
+           id         TEXT PRIMARY KEY,
+           c          TEXT NOT NULL,
+           parent     TEXT,
+           position   REAL NOT NULL DEFAULT 0,
+           data       TEXT NOT NULL DEFAULT '{}',
+           created_at TEXT NOT NULL DEFAULT (datetime('now')),
+           updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+           updated_by TEXT
+         )`
+      ),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_records_c ON records(c)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_records_parent ON records(parent)"),
+    ]).catch((err) => {
+      schemaReady = null; // retry on the next request
+      throw err;
+    });
+  }
+  return schemaReady;
 }
 
-// Cloudflare Access injects the signed-in user's email at the edge.
-// Locally (wrangler dev) the header is absent, so fall back to a placeholder.
-export function getEmail(request) {
-  return request.headers.get("Cf-Access-Authenticated-User-Email") || "you@local";
+// Who is making the change. Cloudflare Access supplies a verified email once it
+// is switched on; until then the page sends the name the person picked.
+export function getUser(request) {
+  const email = request.headers.get("Cf-Access-Authenticated-User-Email");
+  if (email) return email;
+  const name = (request.headers.get("X-SLT-User") || "").trim().slice(0, 40);
+  return name;
 }
 
 export function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
   });
 }
 
 export function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-// Load a full meeting (with its items and their actions) as the shape the UI uses.
-export async function loadMeeting(db, id) {
-  const meeting = await db.prepare("SELECT * FROM meetings WHERE id = ?").bind(id).first();
-  if (!meeting) return null;
-
-  const items = (await db
-    .prepare("SELECT * FROM items WHERE meeting_id = ? ORDER BY position")
-    .bind(id).all()).results;
-
-  const actions = (await db
-    .prepare(
-      "SELECT a.* FROM actions a JOIN items i ON a.item_id = i.id " +
-        "WHERE i.meeting_id = ? ORDER BY a.position"
-    )
-    .bind(id).all()).results;
-
-  const byItem = {};
-  for (const a of actions) {
-    (byItem[a.item_id] = byItem[a.item_id] || []).push({
-      id: a.id, text: a.text, owner: a.owner, done: !!a.done,
-    });
-  }
-
+export function toRecord(row) {
+  let data = {};
+  try { data = JSON.parse(row.data || "{}"); } catch (e) { data = {}; }
   return {
-    id: meeting.id,
-    title: meeting.title,
-    date: meeting.date,
-    start: meeting.start,
-    target: meeting.target,
-    kind: meeting.kind,
-    label: meeting.label,
-    recording_url: meeting.recording_url,
-    transcript: meeting.transcript,
-    updated_at: meeting.updated_at,
-    updated_by: meeting.updated_by,
-    items: items.map((it) => ({
-      id: it.id,
-      title: it.title,
-      type: it.type,
-      minutes: it.minutes,
-      owner: it.owner,
-      notes: it.notes,
-      status: it.status,
-      standing: !!it.standing,
-      actions: byItem[it.id] || [],
-    })),
+    id: row.id,
+    c: row.c,
+    parent: row.parent,
+    position: row.position,
+    data,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    updated_by: row.updated_by,
   };
 }
 
-// Replace all items (and their actions) for a meeting, atomically.
-export async function replaceItems(db, meetingId, items) {
-  const existing = (await db
-    .prepare("SELECT id FROM items WHERE meeting_id = ?")
-    .bind(meetingId).all()).results;
-
-  const stmts = [];
-  for (const row of existing) {
-    stmts.push(db.prepare("DELETE FROM actions WHERE item_id = ?").bind(row.id));
-  }
-  stmts.push(db.prepare("DELETE FROM items WHERE meeting_id = ?").bind(meetingId));
-
-  (items || []).forEach((it, idx) => {
-    const itemId = it.id || uid();
-    stmts.push(
-      db.prepare(
-        "INSERT INTO items (id, meeting_id, position, title, type, minutes, owner, notes, status, standing) " +
-          "VALUES (?,?,?,?,?,?,?,?,?,?)"
-      ).bind(
-        itemId,
-        meetingId,
-        idx,
-        it.title || "",
-        TYPES.includes(it.type) ? it.type : "discussion",
-        parseInt(it.minutes, 10) || 0,
-        it.owner || "",
-        it.notes || "",
-        STATUS.includes(it.status) ? it.status : "todo",
-        it.standing ? 1 : 0
-      )
-    );
-    (it.actions || []).forEach((a, ai) => {
-      stmts.push(
-        db.prepare(
-          "INSERT INTO actions (id, item_id, position, text, owner, done) VALUES (?,?,?,?,?,?)"
-        ).bind(a.id || uid(), itemId, ai, a.text || "", a.owner || "", a.done ? 1 : 0)
-      );
-    });
-  });
-
-  await db.batch(stmts);
+// Validate an incoming record. Returns an error string, or null when valid.
+export function checkRecord(r) {
+  if (!r || typeof r !== "object") return "Record must be an object";
+  if (!COLLECTIONS.includes(r.c)) return "Unknown collection: " + r.c;
+  if (r.id !== undefined && (typeof r.id !== "string" || !r.id || r.id.length > 64)) return "Bad id";
+  if (r.data !== undefined && (typeof r.data !== "object" || r.data === null || Array.isArray(r.data))) return "data must be an object";
+  if (r.data && JSON.stringify(r.data).length > MAX_DATA_BYTES) return "Record is too large";
+  return null;
 }
 
-// Insert a meeting (with optional seed items). Returns the new id.
-export async function insertMeeting(db, m, email) {
-  const id = m.id || uid();
-  await db.prepare(
-    "INSERT INTO meetings (id, title, date, start, target, kind, label, recording_url, transcript, updated_by) " +
-      "VALUES (?,?,?,?,?,?,?,?,?,?)"
-  ).bind(
-    id,
-    m.title || "Senior Leadership Team",
-    m.date || new Date().toISOString().slice(0, 10),
-    m.start || "09:00",
-    parseInt(m.target, 10) || DEFAULT_TARGET,
-    KINDS.includes(m.kind) ? m.kind : "slt",
-    m.label || "",
-    m.recording_url || "",
-    m.transcript || "",
-    email
-  ).run();
-  if (Array.isArray(m.items) && m.items.length) {
-    await replaceItems(db, id, m.items);
-  }
-  return id;
+// Monday (UTC) of the week containing `d`, as YYYY-MM-DD.
+export function weekOf(d = new Date()) {
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dow = (x.getUTCDay() + 6) % 7; // Mon=0
+  x.setUTCDate(x.getUTCDate() - dow);
+  return x.toISOString().slice(0, 10);
 }
 
-// Load all meetings (optionally within a date range) with lightweight items,
-// for the planner board. Uses two queries rather than N+1.
-export async function loadMeetingsWithItems(db, fromDate, toDate) {
-  let q = "SELECT * FROM meetings";
-  const binds = [];
-  if (fromDate && toDate) {
-    q += " WHERE date >= ? AND date <= ?";
-    binds.push(fromDate, toDate);
+// When an objective's status or note changes, record it against this week so
+// the scoreboard can show a trend. One entry per objective per week.
+export async function logStatus(db, objectiveId, status, note, user) {
+  const week = weekOf();
+  const existing = await db
+    .prepare("SELECT id FROM records WHERE c = 'status_log' AND parent = ? AND json_extract(data, '$.week') = ?")
+    .bind(objectiveId, week)
+    .first();
+  const data = JSON.stringify({ week, status: status || "", note: note || "", by: user || "" });
+  if (existing) {
+    await db
+      .prepare("UPDATE records SET data = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?")
+      .bind(data, user, existing.id)
+      .run();
+  } else {
+    await db
+      .prepare("INSERT INTO records (id, c, parent, position, data, updated_by) VALUES (?, 'status_log', ?, 0, ?, ?)")
+      .bind(uid(), objectiveId, data, user)
+      .run();
   }
-  q += " ORDER BY date ASC, created_at ASC";
-  const meetings = (await db.prepare(q).bind(...binds).all()).results;
-
-  const items = (await db
-    .prepare("SELECT id, meeting_id, title, type, minutes, status, standing FROM items ORDER BY position")
-    .all()).results;
-
-  const byMeeting = {};
-  for (const it of items) {
-    (byMeeting[it.meeting_id] = byMeeting[it.meeting_id] || []).push({
-      id: it.id, title: it.title, type: it.type, minutes: it.minutes,
-      status: it.status, standing: !!it.standing,
-    });
-  }
-
-  return meetings.map((m) => ({
-    id: m.id, title: m.title, date: m.date, start: m.start, target: m.target,
-    kind: m.kind, label: m.label, updated_by: m.updated_by,
-    has_recording: !!(m.recording_url || m.transcript),
-    items: byMeeting[m.id] || [],
-  }));
 }

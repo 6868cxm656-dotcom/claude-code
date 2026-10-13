@@ -1,75 +1,58 @@
-# SLT Agenda — Cloudflare edition
+# SLT Scoreboard
 
-A shared weekly agenda planner for the Senior Leadership Team. Everyone opens
-one URL and edits the same agendas, stored in a real database. Locked to your
-team's email addresses with Cloudflare Access.
+A thematic-goal scoreboard and meeting rhythm for a senior leadership team,
+following the Table Group model (*The Advantage*, *Death by Meeting*). Runs on
+Cloudflare Pages with a D1 database.
 
-## How it's built
+The app ships empty. Your goal, objectives, tasks and playbook are loaded from
+a private import file, so none of it lives in this (public) repository.
 
-| Piece | What it does |
+## What's in it
+
+| Tab | What it's for |
 | --- | --- |
-| **Cloudflare Pages** | Hosts the page at a proper URL (`public/index.html`). |
-| **Pages Functions** | A small API under `functions/api/` that the page calls. |
-| **Cloudflare D1** | A SQLite database holding meetings, items, and actions. |
-| **Cloudflare Access** | Restricts the whole app to approved email addresses. |
+| **Scoreboard** | The thematic goal, defining objectives with owners, on track / at risk / off track status with a one-line reason and an 8-week trend, success statements, key tasks (who, when, due), and standard operating objectives. Missing owners, dates and success statements are highlighted; overdue tasks are flagged. |
+| **Meetings** | The meeting rhythm over the next three months: weekly tacticals (with a rotating chair), strategic meetings (fortnightly twice, then every four weeks), off-sites, Board and subcommittee dates. Drag topics between meetings, or between a meeting and the car park. |
+| **Meeting page** | Weekly tactical: lightning round → scoreboard review (red goes straight on the agenda; open actions reviewed) → agenda with a time budget → strategic car park → decisions (with a fist-of-five commitment check) and actions → will say / won't say. Strategic: topics with owner, pre-read, BLUF, the conflict triangle and the Working Genius needed, ending in logged decisions. Every meeting can hold a Granola link and transcript. |
+| **Car park** | Strategic topics waiting for a slot, ranked by urgency and importance, plus the potential not-do list. |
+| **Actions** | Every open action across meetings, grouped by owner, and the decisions log. |
+| **Playbook** | The six clarity questions, values, strategic anchors, meeting rhythm, conflict rules, Working Genius map and team-health scores. All editable. |
+| **Settings** | Team members, goal, import and backup. |
 
-Everything saves automatically to the shared database, so there's no file to
-pass around.
+Status updates are kept week by week, so the trend shows who updated and when.
+Pick your name at the top of the page so your edits are signed; once Cloudflare
+Access is on, the signed-in email is used instead.
 
-## Features
+## Deploying
 
-Same as the lightweight version: timed running order with a capacity meter,
-inline editing, drag-to-reorder, decisions and actions, done / carry-forward,
-weekly roll-forward (keeps standing and carried items), plus a meeting switcher,
-"Copy for email", and "Print / PDF". Every save records who last edited it.
+The Pages project builds from this folder (root directory `slt-agenda-cf`,
+output directory `public`, no build command). The D1 binding is in
+`wrangler.toml`. The database table creates itself on first use — there's no
+SQL to run.
 
-## One-time deployment
-
-You'll need a Cloudflare account and Node.js installed. Run these from this
-`slt-agenda-cf/` folder.
-
-```bash
-# 1. Install tooling (Wrangler is the Cloudflare CLI)
-npm install
-
-# 2. Sign in to Cloudflare
-npx wrangler login
-
-# 3. Create the database, then paste the printed database_id into wrangler.toml
-npx wrangler d1 create slt-agenda
-
-# 4. Create the tables in the live database
-npm run db:remote
-
-# 5. Deploy (first run creates the Pages project; follow the prompts)
-npm run deploy
-```
-
-Wrangler prints your live URL, e.g. `https://slt-agenda.pages.dev`.
-
-### Lock it to your team (Cloudflare Access)
-
-1. In the Cloudflare dashboard, open **Zero Trust → Access → Applications**.
-2. **Add an application → Self-hosted**, and point it at your Pages domain
-   (e.g. `slt-agenda.pages.dev`).
-3. Add a **policy**: Action *Allow*, and include the SLT email addresses (or your
-   whole `@churchillfellowship.org` domain).
-4. Save. From then on, visitors sign in first, and the app shows who's editing.
+**Before importing anything sensitive, switch on Cloudflare Access:**
+Cloudflare dashboard → Zero Trust → Access → Applications → Add an application
+→ Self-hosted. Add the site's domain (e.g. `your-project.pages.dev`) and
+`*.your-project.pages.dev` (preview deployments), with a policy that allows
+only your team's email addresses. Until then the site shows a warning banner.
 
 ## Local development
 
 ```bash
-npm run db:local   # create the tables in a local test database
-npm run dev        # serves the app + API at http://localhost:8788
+npm install
+npm run dev          # http://localhost:8788
 ```
 
-When running locally there's no Cloudflare Access, so edits are attributed to
-`you@local`.
+## Data
 
-## Notes & limits
+Everything is stored in one `records` table (see `schema.sql`): each record has
+a collection, an optional parent (a meeting or objective) and its fields as
+JSON. The API is in `functions/api/records`:
 
-- Saving replaces the whole meeting (last edit wins). Fine for a small team where
-  one person usually drives; it does not do live, character-by-character
-  co-editing.
-- A plain backup of the data any time:
-  `npx wrangler d1 execute slt-agenda --remote --command "SELECT * FROM meetings"`
+- `GET /api/records` — all records
+- `POST /api/records` — create or replace one record, or `{ records: [...] }`
+- `PATCH /api/records/:id` — merge changed fields (objective status changes are logged per week)
+- `DELETE /api/records/:id` — delete a record and anything filed under it
+
+Use **Settings → Download backup** for a full export; the same file can be
+imported again.
